@@ -16,9 +16,10 @@ Your work will be based on the paper Siamese Neural Networks for One-shot Image 
 2. Use the following dataset - [Labeled Faces in the Wild](http://vis-www.cs.umass.edu/lfw/index.html)
 
    - **a.** Download the dataset. 
-        Note: there are several versions of this dataset, use the version found here (it’s called LFW-a, and is also used in the DeepFace paper). 
+        Note: there are several versions of this dataset, use the version found [here](https://talhassner.github.io/home/projects/lfwa/index.html) (it’s called LFW-a, and is also used in the DeepFace paper). 
 
-   - **b.** Use the following train and test sets to train your model: Train \ Test. [Remember—you will use your test set to perform one-shot learning. 
+   - **b.** Use the following train and test sets to train your model: [Train](https://drive.google.com/file/d/1Ie-8ihDHfS_FmxAq4EMtMZ-PpMdezQB8/view?usp=drive_link) \ [Test](https://drive.google.com/file/d/11r_8bbGap1skrEzrQtQOu8ZztG6UVisX/view?usp=drive_link). 
+   [Remember—you will use your test set to perform one-shot learning. 
    This division is set up so that no subject from the test set is included in the train set]. 
    Please note it is often recommended to use a validation set when training your model. Make your own decision whether to use one and what percentage of (training) samples to allocate.
 
