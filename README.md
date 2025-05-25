@@ -36,10 +36,10 @@ Your work will be based on the paper Siamese Neural Networks for One-shot Image 
 
 4. In addition to the details requested above, your report needs to include an analysis of your architecture’s performance. 
 Please include the following information:
-  - **a.** Convergence times, final loss and accuracy on the test set and holdout set
-  - **b.** Graphs describing the loss on the training set throughout the training process
-  - **c.** Performance when experimenting with the various parameters
-  - **d.** Please include examples of accurate and misclassifications and try to determine why your model was not successful
-  - **e.** Any other information you consider relevant or found useful while training the model
+    - **a.** Convergence times, final loss and accuracy on the test set and holdout set
+    - **b.** Graphs describing the loss on the training set throughout the training process
+    - **c.** Performance when experimenting with the various parameters
+    - **d.** Please include examples of accurate and misclassifications and try to determine why your model was not successful
+    - **e.** Any other information you consider relevant or found useful while training the model
 
 - Please note that the report needs to reflect your decision-making process throughout the assignment. Please include all relevant information.
