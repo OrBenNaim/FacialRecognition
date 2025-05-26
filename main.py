@@ -6,7 +6,7 @@ if __name__ == '__main__':
     print("Siamese Network Implementation for One-shot Face Recognition")
 
     # Analyze dataset first
-    train_dist, test_dist = analyze_dataset_distribution()
+    #train_dist, test_dist = analyze_dataset_distribution(TRAIN_FILE, TEST_FILE)
 
     # Create and run the model
     siamese_model = SiameseFaceRecognition(input_shape=OPTIMIZED_IMG_SHAPE)
