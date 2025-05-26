@@ -14,7 +14,7 @@ def plot_distribution_charts(train_val_dist: dict, test_dist: dict, save_dir: st
     save_dir : str
         Directory to save the plots
     """
-    # Create directory if it doesn't exist
+    # Create a directory if it doesn't exist
     os.makedirs(save_dir, exist_ok=True)
 
     # Plot Training + Validation distribution
