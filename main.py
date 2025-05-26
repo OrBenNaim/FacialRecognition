@@ -1,17 +1,23 @@
 from src.constants import OPTIMIZED_IMG_SHAPE, DATA_PATH, TRAIN_FILE, TEST_FILE, VALIDATION_SPLIT
 from src.face_recognition_model import SiameseFaceRecognition
-from src.utils import analyze_dataset_distribution
 
 if __name__ == '__main__':
     print("Siamese Network Implementation for One-shot Face Recognition")
 
-    # Analyze dataset first
-    #train_dist, test_dist = analyze_dataset_distribution(TRAIN_FILE, TEST_FILE)
-
-    # Create and run the model
+    # Create a model pipeline
     siamese_model = SiameseFaceRecognition(input_shape=OPTIMIZED_IMG_SHAPE)
-    train_person_images, test_person_images = siamese_model.load_lfw_dataset(DATA_PATH, TRAIN_FILE,
-                                                                             TEST_FILE, VALIDATION_SPLIT)
+
+    siamese_model.load_lfw_dataset(DATA_PATH, TRAIN_FILE,
+                                   TEST_FILE, VALIDATION_SPLIT)
+
+    # Analyze dataset first
+    siamese_model.analyze_dataset_distribution()
+
+
+    # train_person_images, test_person_images = siamese_model.load_lfw_dataset(DATA_PATH, TRAIN_FILE,
+    #                                                                          TEST_FILE, VALIDATION_SPLIT)
+
+    # Run the model
     # siamese_model.run_complete_experiment(DATA_PATH, TRAIN_FILE, TEST_FILE)
 
     print("\nTo run the experiment, update the paths above and uncomment the execution lines!")
