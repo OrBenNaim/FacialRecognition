@@ -1,13 +1,12 @@
 import numpy as np
-from tensorflow import keras
-from tensorflow.keras import layers, Model, Input
+from tensorflow.python.keras import Model
 import os
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 from tqdm import tqdm
 import warnings
-from typing import Tuple, List, Dict, Optional, Any
+from typing import Tuple, List, Dict, Optional, Any, Counter
 
 from src.constants import RANDOM_SEED
 
@@ -16,19 +15,31 @@ warnings.filterwarnings('ignore')
 
 class SiameseFaceRecognition:
     """
-    Complete implementation of Siamese Neural Networks for One-shot Face Recognition.
-    This class provides a full pipeline for training and evaluating a Siamese network
-    on face recognition tasks, including data loading, model creation, training,
-    evaluation, and visualization.
+    A Siamese Neural Network implementation for one-shot face recognition tasks.
+
+    This class provides an end-to-end pipeline for:
+    - Loading and preprocessing face image datasets
+    - Building and training a Siamese neural network
+    - Evaluating face recognition performance
+    - Analyzing dataset distributions
+    - Generating visualizations of results
+
+    The Siamese architecture enables learning face similarity metrics from pairs of images,
+    making it suitable for recognizing faces with limited training examples per person.
     """
 
     def __init__(self, input_shape):
         """
-        Initialize the Siamese Network
-        Args:
-            input_shape: Shape of input images
+        Initialize the Siamese Network.
 
-        Note:
+        Parameters
+        ----------
+        input_shape : tuple
+            The target shape for input images as (height, width, channels).
+            All loaded images will be resized to this shape.
+
+        Note
+        -----
             The input_shape parameter defines the size images will be resized to
             during loading, NOT the original size of your image files.
         """
@@ -45,11 +56,11 @@ class SiameseFaceRecognition:
         self.history: Optional[Dict[str, List[float]]] = None
 
         # Dictionary mapping person names to their image keys (e.g., {'John_Doe': ['John_Doe_0001', 'John_Doe_0002']})
-        self.train_person_images: Optional[Dict[str, List[str]]] = None
+        self.train_val_person_images: Optional[Dict[str, List[str]]] = None
         self.test_person_images: Optional[Dict[str, List[str]]] = None
 
         # Dictionary mapping image keys to numpy arrays of image data (e.g., {'John_Doe_0001': array([...])})
-        self.train_image_dict: Optional[Dict[str, np.ndarray]] = None
+        self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None
         self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
 
         # Array of individual training images
@@ -91,31 +102,47 @@ class SiameseFaceRecognition:
         # Dictionary storing various statistics about the dataset and training
         self.stats: Dict[str, Any] = {}
 
+        self.train_val_dist = None
+        self.test_dist = None
+
         print(f"Siamese Face Recognition initialized with input shape: {input_shape}")
 
-    def load_lfw_dataset(self, data_path: str, train_file: str, test_file: str, validation_split: float
-                         ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    def load_lfw_dataset(self, data_path: str, train_file: str, test_file: str, validation_split: float) -> None:
         """
-        Load and preprocess the LFW-a dataset with the specific pair file format.
+        Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
 
-        This method handles the standard LFW pairs format where:
-        - Lines with 3 values indicate same person pairs (positive)
-        - Lines with 4 values indicate different person pairs (negative)
+        This method handles the complete data pipeline including
+        - Loading image pairs from LFW pair files
+        - Converting images to grayscale
+        - Resizing images to the model's input shape
+        - Normalizing pixel values to [0, 1]
+        - Creating training/validation/test splits
 
-        Args:
-            data_path: Path to the LFW-a dataset root directory containing person folders
-            train_file: Path to pairsDevTrain.txt file containing training pairs
-            test_file: Path to pairsDevTest.txt file containing test pairs
-            validation_split: Fraction of training data to use for validation (0.0 to 1.0)
+        Parameters
+        ----------
+        data_path : str
+            Root directory path containing LFW person subdirectories
+        train_file : str
+            Path to the training pairs file (e.g., pairsDevTrain.txt)
+        test_file : str
+            Path to the test pairs file (e.g., pairsDevTest.txt)
+        validation_split : float
+            Fraction of training data to use for validation (0.0 to 1.0)
 
-        Returns:
-            Tuple containing:
-                - train_person_images: Dictionary mapping person names to their image keys
-                - test_person_images: Dictionary mapping person names to their image keys
+        Raises
+        ------
+        FileNotFoundError
+            If data_path, train_file, or test_file doesn't exist
+        ValueError
+            If validation_split is not between 0 and 1
 
-        Note:
-            Images are automatically resized to self.input_shape during loading.
-            Original image files are not modified.
+        Notes
+        -----
+        - Expects LFW pair file format:
+          - 3 values per line for the same person pairs: name, img1_num, img2_num
+          - 4 values per line for different person pairs: name1, img1_num, name2, img2_num
+        - Images are automatically resized to self.input_shape
+        - Original image files are not modified
         """
         # Validate inputs
         if not os.path.exists(data_path):
@@ -130,27 +157,36 @@ class SiameseFaceRecognition:
         if not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
-        print("Loading LFW-a dataset...")
+
         print(f"Image resize target: {self.input_shape[0]}x{self.input_shape[1]}")
 
         print("Loading LFW-a dataset...")
 
         # First, load all unique images and create a mapping
-        def load_all_images(
-                pairs_file: str,
-                base_path: str
-        ) -> Tuple[Dict[str, np.ndarray], Dict[str, List[str]]]:
+        def load_all_images(pairs_file: str, base_path: str) -> Tuple[Dict[str, np.ndarray], Dict[str, List[str]]]:
             """
-            Load all unique images mentioned in the pair's file.
+            Load and preprocess all unique images referenced in a pair's file.
 
-            Args:
-                pairs_file: Path to the pair's file (e.g., pairsDevTrain.txt)
-                base_path: Base path to the image dataset
+            Parameters
+            ----------
+            pairs_file : str
+                Path to the LFW pairs file to process
+            base_path : str
+                Root directory containing person subdirectories
 
-            Returns:
-                Tuple of:
-                    - image_dict: Dictionary mapping image_key (e.g., 'Al_Pacino_0001') to numpy array
-                    - person_images: Dictionary mapping person name to list of image keys
+            Returns
+            -------
+            tuple
+                (image_dict, person_images) where:
+                - image_dict: Dict[str, np.ndarray] mapping image keys to image arrays
+                - person_images: Dict[str, List[str]] mapping person names to their image keys
+
+            Notes
+            -----
+            - Images are converted to grayscale
+            - Resized to model's input_shape
+            - Pixel values normalized to [0, 1]
+            - Skips missing images with a warning
             """
             image_dict = {}  # Stores image_key -> image array
             person_images = defaultdict(list)  # Stores person -> list of image keys
@@ -170,24 +206,24 @@ class SiameseFaceRecognition:
                         # Process both images from the same person
                         for img_num in [img1_num, img2_num]:
                             img_name = f"{person_name}_{img_num:04d}.jpg"
-                            img_key = f"{person_name}_{img_num}"
+                            current_img_key = f"{person_name}_{img_num}"
 
                             # Only load if we haven't seen this image before
-                            if img_key not in image_dict:
+                            if current_img_key not in image_dict:
                                 img_path = os.path.join(base_path, person_name, img_name)
 
                                 if os.path.exists(img_path):
                                     # Load and preprocess image
                                     img = Image.open(img_path).convert('L')  # Convert to grayscale
 
-                                    # Resize to model's expected input shape
+                                    # Resize to the model's expected input shape
                                     img = img.resize((self.input_shape[0], self.input_shape[1]))
 
                                     # Normalize pixel values to [0, 1]
                                     img_array = np.array(img) / 255.0
 
-                                    image_dict[img_key] = img_array
-                                    person_images[person_name].append(img_key)
+                                    image_dict[current_img_key] = img_array
+                                    person_images[person_name].append(current_img_key)
                                 else:
                                     print(f"Warning: Image not found: {img_path}")
 
@@ -232,16 +268,27 @@ class SiameseFaceRecognition:
         def load_pairs(pairs_file: str, image_dict: Dict[str, np.ndarray]
                        ) -> Tuple[np.ndarray, np.ndarray]:
             """
-            Load pairs and labels from the pair's file.
+            Create image pairs and labels from a pair's definition file.
 
-            Args:
-                pairs_file: Path to the pairs file
-                image_dict: Dictionary mapping image keys to numpy arrays
+            Parameters
+            ----------
+            pairs_file : str
+                Path to the LFW pairs file
+            image_dict : Dict[str, np.ndarray]
+                Dictionary mapping image keys to preprocessed image arrays
 
-            Returns:
-                Tuple of:
-                    - pairs: Array of shape (n_pairs, 2, height, width, channels)
-                    - labels: Binary labels (1 for the same person, 0 for different)
+            Returns
+            -------
+            tuple
+                (pairs, labels) where:
+                - pairs: np.ndarray of shapes (n_pairs, 2, height, width, channels)
+                - labels: np.ndarray of binary labels (1=same person, 0=different)
+
+            Notes
+            -----
+            - Only create pairs where both images exist in image_dict
+            - Positive pairs (same person) come from 3-value lines
+            - Negative pairs (different people) come from 4-value lines
             """
             pairs = []
             labels = []
@@ -283,36 +330,40 @@ class SiameseFaceRecognition:
 
         # Load all images from a training file
         print("Loading training images...")
-        self.train_image_dict, self.train_person_images = load_all_images(train_file, data_path)
+        self.train_val_image_dict, self.train_val_person_images = load_all_images(train_file, data_path)
 
         # Load all images from a test file
-        print("Loading test images...")
+        print("\nLoading test images...")
         self.test_image_dict, self.test_person_images = load_all_images(test_file, data_path)
 
+        # Check for overlap between train_val_person_images and test_person_images
+        common_people = set(self.train_val_person_images.keys()) & set(self.test_person_images.keys())
+        print(f"\nCommon people in train_val and test sets: {len(common_people)}")
+
         # Load training pairs
-        print("\nCreating training pairs...")
-        train_pairs, train_labels = load_pairs(train_file, self.train_image_dict)
+        print("\nCreating training + validation pairs...")
+        train_val_pairs, train_val_labels = load_pairs(train_file, self.train_val_image_dict)
 
         # Load test pairs
         print("\nCreating test pairs...")
         test_pairs, test_labels = load_pairs(test_file, self.test_image_dict)
 
         # Create validation split from training pairs
-        print(f"\nSplitting training data (validation split: {validation_split})...")
+        print(f"\nSplitting training + validation data (validation split: {validation_split})...")
 
         train_pairs, val_pairs, train_labels, val_labels = train_test_split(
-            train_pairs, train_labels, test_size=validation_split,
-            random_state=RANDOM_SEED, stratify=train_labels
+            train_val_pairs, train_val_labels, test_size=validation_split,
+            random_state=RANDOM_SEED, stratify=train_val_labels
         )
 
         # Extract unique images for compatibility with other methods
         # This allows us to use individual images for one-shot learning evaluation
         train_images = []
         train_image_labels = []
-        for person, img_keys in self.train_person_images.items():
+        for person, img_keys in self.train_val_person_images.items():
             for img_key in img_keys:
-                if img_key in self.train_image_dict:
-                    train_images.append(self.train_image_dict[img_key])
+                if img_key in self.train_val_image_dict:
+                    train_images.append(self.train_val_image_dict[img_key])
                     train_image_labels.append(person)
 
         test_images = []
@@ -334,9 +385,11 @@ class SiameseFaceRecognition:
         self.train_pairs = train_pairs
         self.train_pair_labels = train_labels
 
+        # Store pairs for validation
         self.val_pairs = val_pairs
         self.val_pair_labels = val_labels
 
+        # Store pairs for test
         self.test_pairs = test_pairs
         self.test_pair_labels = test_labels
 
@@ -354,6 +407,31 @@ class SiameseFaceRecognition:
         self.val_images = self.train_images[:val_size]
         self.val_labels = self.train_labels[:val_size]
 
+    def analyze_dataset_distribution(self) -> None:
+        """
+        Perform comprehensive analysis of dataset statistics and distributions.
+
+        This method calculates and stores various dataset metrics including
+        - Total number of pairs in train/val/test sets
+        - Distribution of positive/negative pairs
+        - Number of unique individuals
+        - Images per person statistics
+        - Train/test set overlap analysis
+
+        The analysis results are stored in the self.stats dictionary and printed
+        to provide insights into dataset characteristics for experimental design.
+
+        Notes
+        -----
+        - Called after dataset loading to validate data quality
+        - Help identify potential dataset biases
+        - Useful for tuning training parameters
+        """
+        print("\n=== Detailed Dataset Analysis ===")
+
+        self.train_val_dist = [len(images) for images in self.train_val_person_images.values()]
+        self.test_dist = [len(images) for images in self.test_person_images.values()]
+
         # Calculate and store comprehensive statistics
         self.stats = {
             'total_train_pairs': len(self.train_pairs),
@@ -365,8 +443,21 @@ class SiameseFaceRecognition:
             'positive_val_pairs': np.sum(self.val_pair_labels == 1),
             'negative_val_pairs': np.sum(self.val_pair_labels == 0),
 
-            'unique_train+val_people': len(self.train_person_images),
-            'unique_train+val_images': len(self.train_image_dict),
+            'unique_train+val_people': len(self.train_val_person_images),
+            'unique_train+val_images': len(self.train_val_image_dict),
+
+            # Calculate the distribution of images per person and store in stats
+            'train+val_images_per_person_distribution': dict(
+            Counter(self.train_val_dist)),
+
+            'average_train+val_images_per_person': round(len(self.train_images) / len(self.train_val_person_images), 3),
+
+            'min_train+val_images_per_person': min(self.train_val_dist),
+            'max_train+val_images_per_person': max(self.train_val_dist),
+
+            'train_val_dist_mean': round(np.mean(self.train_val_dist), 3),
+            'train_val_dist_median': round(np.median(self.train_val_dist), 3),
+            'train_val_dist_std': round(np.std(self.train_val_dist), 3),
 
             'total_test_pairs': len(self.test_pairs),
 
@@ -376,18 +467,20 @@ class SiameseFaceRecognition:
             'unique_test_people': len(self.test_person_images),
             'unique_test_images': len(self.test_image_dict),
 
-            'image_shape': self.input_shape,
+            'min_test_images_per_person': min(self.test_dist),
+            'max_test_images_per_person': max(self.test_dist),
+
+            'average_test_images_per_person': round(len(self.test_images) / len(self.test_person_images), 3),
+
+            'test_dist_mean': round(np.mean(self.test_dist), 3),
+            'test_dist_median': round(np.median(self.test_dist), 3),
+            'test_dist_std': round(np.std(self.test_dist), 3),
+
+            'test_images_per_person_distribution': dict(
+                Counter(self.test_dist)),
         }
 
-        # Print summary
-        print("\n" + "=" * 50)
-        print(f"\nDataset loaded successfully!")
-        print("=" * 50)
-
         for key, val in self.stats.items():
-            print(f"{key}: {val}")
+            print(f"{key}: {val}\n")
 
-        print(f"Images resized from original to: {self.input_shape[0]}x{self.input_shape[1]}")
         print("=" * 50)
-
-        return self.train_person_images, self.test_person_images
