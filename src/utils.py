@@ -1,11 +1,24 @@
 from collections import defaultdict
+from typing import Tuple
 
 from src.constants import TRAIN_FILE, TEST_FILE
 
 
-def analyze_dataset_distribution():
+def analyze_dataset_distribution(train_file: str, test_file: str) -> Tuple[set, set]:
     """
-    Perform detailed dataset analysis before training
+    Perform detailed dataset analysis before training.
+
+    This function analyzes the pair's files to understand the dataset structure,
+    distribution of positive/negative pairs, and check for train/test overlap.
+
+    Args:
+        train_file: Path to pairsDevTrain.txt
+        test_file: Path to pairsDevTest.txt
+
+    Returns:
+        Tuple containing:
+            - train_people: Set of people names in training set
+            - test_people: Set of people names in a test set
     """
     print("\n=== Detailed Dataset Analysis ===")
 
@@ -18,11 +31,21 @@ def analyze_dataset_distribution():
 
         for line in lines:
             parts = line.strip().split('\t')
-            if len(parts) == 3:
+
+            if len(parts) == 3:     # Same person (positive pair)
                 person_name = parts[0]
-                num_images = int(parts[2])
-                people_images[person_name] = num_images
-                total_images += num_images
+                #num_images = int(parts[2])
+                people_images[person_name] += 2  #num_images
+                total_images += 2 #num_images
+
+            elif len(parts) == 4:   # Different person (negative pair)
+                person_name1 = parts[0]
+                people_images[person_name1] += 1
+
+                person_name2 = parts[2]
+                people_images[person_name2] += 1
+
+                total_images += 2
 
         print(f"\n{name} Set Analysis:")
         print(f"- Total people: {len(people_images)}")
@@ -42,8 +65,8 @@ def analyze_dataset_distribution():
 
         return people_images
 
-    train_dist = analyze_file(TRAIN_FILE, "Training")
-    test_dist = analyze_file(TEST_FILE, "Test")
+    train_dist = analyze_file(train_file, "Training")
+    test_dist = analyze_file(test_file, "Test")
 
     # Check for overlap
     train_people = set(train_dist.keys())
