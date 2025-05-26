@@ -22,18 +22,8 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 - Images per person distribution:
 
 ##### Distribution Visualization
-![Train Val Distribution](./images/train_val_dist.png)
+![Train Val Distribution](./src/images/train_val_dist.png)
 
-  ```
-  1 images: 1328 people
-  2 images: 526 people
-  3 images: 151 people 
-  4 images: 71 people
-  5 images: 21 people
-  6 images: 27 people
-  7 images: 5 people
-  8 images: 3 people
-  ```
    #### Training + Validation Set Analysis
    - Most common case: 1 image per person (62.3% of people)
    - Least common case: 8 images per person (0.14% of people)
@@ -45,18 +35,8 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 - Average images per person: 1.609
 
 ##### Distribution Visualization
-![Test Distribution](./images/test_dist.png)
+![Test Distribution](./src/images/test_dist.png)
 
-- Images per person distribution:
-  ```
-  1 images: 602 people
-  2 images: 235 people
-  3 images: 73 people
-  4 images: 28 people
-  5 images: 10 people
-  6 images: 9 people
-  7 images: 6 people
-  ```
    #### Test Set Analysis
    - Most common case: 1 image per person (62.5% of people)
    - Least common case: 7 images per person (0.62% of people)
