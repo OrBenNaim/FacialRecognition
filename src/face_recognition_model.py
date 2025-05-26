@@ -1,19 +1,13 @@
 import numpy as np
-import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Model, Input
-import matplotlib.pyplot as plt
 import os
 from PIL import Image
-import random
 from sklearn.model_selection import train_test_split
-from sklearn.manifold import TSNE
 from collections import defaultdict
-import pandas as pd
-import seaborn as sns
 from tqdm import tqdm
 import warnings
-from typing import Tuple, List, Dict, Optional, Union, Any
+from typing import Tuple, List, Dict, Optional, Any
 
 from src.constants import RANDOM_SEED
 
@@ -38,33 +32,64 @@ class SiameseFaceRecognition:
             The input_shape parameter defines the size images will be resized to
             during loading, NOT the original size of your image files.
         """
+        # Input shape for the images (height, width, channels)
         self.input_shape = input_shape
+
+        # The main Siamese model that computes similarity between image pairs
         self.model: Optional[Model] = None
+
+        # Base network used as a feature extractor in the Siamese architecture
         self.base_network: Optional[Model] = None
+
+        # Training history containing loss and metrics for each epoch
         self.history: Optional[Dict[str, List[float]]] = None
 
-        # Data storage attributes
+        # Dictionary mapping person names to their image keys (e.g., {'John_Doe': ['John_Doe_0001', 'John_Doe_0002']})
+        self.train_person_images: Optional[Dict[str, List[str]]] = None
+        self.test_person_images: Optional[Dict[str, List[str]]] = None
+
+        # Dictionary mapping image keys to numpy arrays of image data (e.g., {'John_Doe_0001': array([...])})
+        self.train_image_dict: Optional[Dict[str, np.ndarray]] = None
+        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
+
+        # Array of individual training images
         self.train_images: Optional[np.ndarray] = None
+
+        # Labels corresponding to train_images
         self.train_labels: Optional[np.ndarray] = None
+
+        # Array of validation images
         self.val_images: Optional[np.ndarray] = None
+
+        # Labels corresponding to val_images
         self.val_labels: Optional[np.ndarray] = None
+
+        # Array of test images
         self.test_images: Optional[np.ndarray] = None
+
+        # Labels corresponding to test_images
         self.test_labels: Optional[np.ndarray] = None
 
-        # Pair storage for preloaded pairs from files
+        # Array of training image pairs used for Siamese network training
         self.train_pairs: Optional[np.ndarray] = None
+
+        # Binary labels for training pairs (1: same person, 0: different person)
         self.train_pair_labels: Optional[np.ndarray] = None
+
+        # Array of validation image pairs
         self.val_pairs: Optional[np.ndarray] = None
+
+        # Binary labels for validation pairs (1: same person, 0: different person)
         self.val_pair_labels: Optional[np.ndarray] = None
+
+        # Array of test image pairs
         self.test_pairs: Optional[np.ndarray] = None
+
+        # Binary labels for test pairs (1: same person, 0: different person)
         self.test_pair_labels: Optional[np.ndarray] = None
 
-        # Statistics tracking for comprehensive reporting
-        self.stats: Dict[str, Dict[str, Any]] = {
-            'dataset': {},
-            'training': {},
-            'evaluation': {}
-        }
+        # Dictionary storing various statistics about the dataset and training
+        self.stats: Dict[str, Any] = {}
 
         print(f"Siamese Face Recognition initialized with input shape: {input_shape}")
 
@@ -95,10 +120,13 @@ class SiameseFaceRecognition:
         # Validate inputs
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"Data path not found: {data_path}")
+
         if not os.path.exists(train_file):
             raise FileNotFoundError(f"Train file not found: {train_file}")
+
         if not os.path.exists(test_file):
             raise FileNotFoundError(f"Test file not found: {test_file}")
+
         if not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
@@ -121,7 +149,7 @@ class SiameseFaceRecognition:
 
             Returns:
                 Tuple of:
-                    - image_dict: Dictionary mapping image_key to numpy array
+                    - image_dict: Dictionary mapping image_key (e.g., 'Al_Pacino_0001') to numpy array
                     - person_images: Dictionary mapping person name to list of image keys
             """
             image_dict = {}  # Stores image_key -> image array
@@ -200,7 +228,7 @@ class SiameseFaceRecognition:
 
             return image_dict, person_images
 
-        # Load pairs from file
+        # Load pairs from a file
         def load_pairs(pairs_file: str, image_dict: Dict[str, np.ndarray]
                        ) -> Tuple[np.ndarray, np.ndarray]:
             """
@@ -255,21 +283,19 @@ class SiameseFaceRecognition:
 
         # Load all images from a training file
         print("Loading training images...")
-        train_image_dict, train_person_images = load_all_images(train_file, data_path)
+        self.train_image_dict, self.train_person_images = load_all_images(train_file, data_path)
 
         # Load all images from a test file
         print("Loading test images...")
-        test_image_dict, test_person_images = load_all_images(test_file, data_path)
+        self.test_image_dict, self.test_person_images = load_all_images(test_file, data_path)
 
         # Load training pairs
         print("\nCreating training pairs...")
-        train_pairs, train_labels = load_pairs(train_file, train_image_dict)
+        train_pairs, train_labels = load_pairs(train_file, self.train_image_dict)
 
         # Load test pairs
         print("\nCreating test pairs...")
-        test_pairs, test_labels = load_pairs(test_file, test_image_dict)
-
-
+        test_pairs, test_labels = load_pairs(test_file, self.test_image_dict)
 
         # Create validation split from training pairs
         print(f"\nSplitting training data (validation split: {validation_split})...")
@@ -283,21 +309,21 @@ class SiameseFaceRecognition:
         # This allows us to use individual images for one-shot learning evaluation
         train_images = []
         train_image_labels = []
-        for person, img_keys in train_person_images.items():
+        for person, img_keys in self.train_person_images.items():
             for img_key in img_keys:
-                if img_key in train_image_dict:
-                    train_images.append(train_image_dict[img_key])
+                if img_key in self.train_image_dict:
+                    train_images.append(self.train_image_dict[img_key])
                     train_image_labels.append(person)
 
         test_images = []
         test_image_labels = []
 
-        for person, img_keys in test_person_images.items():
+        for person, img_keys in self.test_person_images.items():
 
             for img_key in img_keys:
 
-                if img_key in test_image_dict:
-                    test_images.append(test_image_dict[img_key])
+                if img_key in self.test_image_dict:
+                    test_images.append(self.test_image_dict[img_key])
                     test_image_labels.append(person)
 
         # Convert to numpy arrays
@@ -329,23 +355,28 @@ class SiameseFaceRecognition:
         self.val_labels = self.train_labels[:val_size]
 
         # Calculate and store comprehensive statistics
-        self.stats['dataset'] = {
-            'total_train_pairs': len(train_pairs),
-            'total_val_pairs': len(val_pairs),
-            'total_test_pairs': len(test_pairs),
-            'positive_train_pairs': np.sum(train_labels == 1),
-            'negative_train_pairs': np.sum(train_labels == 0),
-            'positive_val_pairs': np.sum(val_labels == 1),
-            'negative_val_pairs': np.sum(val_labels == 0),
-            'positive_test_pairs': np.sum(test_labels == 1),
-            'negative_test_pairs': np.sum(test_labels == 0),
-            'unique_train_people': len(train_person_images),
-            'unique_test_people': len(test_person_images),
-            'unique_train_images': len(train_image_dict),
-            'unique_test_images': len(test_image_dict),
+        self.stats = {
+            'total_train_pairs': len(self.train_pairs),
+            'total_val_pairs': len(self.val_pairs),
+
+            'positive_train_pairs': np.sum(self.train_pair_labels == 1),
+            'negative_train_pairs': np.sum(self.train_pair_labels == 0),
+
+            'positive_val_pairs': np.sum(self.val_pair_labels == 1),
+            'negative_val_pairs': np.sum(self.val_pair_labels == 0),
+
+            'unique_train+val_people': len(self.train_person_images),
+            'unique_train+val_images': len(self.train_image_dict),
+
+            'total_test_pairs': len(self.test_pairs),
+
+            'positive_test_pairs': np.sum(self.test_pair_labels == 1),
+            'negative_test_pairs': np.sum(self.test_pair_labels == 0),
+
+            'unique_test_people': len(self.test_person_images),
+            'unique_test_images': len(self.test_image_dict),
+
             'image_shape': self.input_shape,
-            'pos_neg_ratio_train': np.sum(train_labels == 1) / np.sum(train_labels == 0),
-            'pos_neg_ratio_test': np.sum(test_labels == 1) / np.sum(test_labels == 0)
         }
 
         # Print summary
@@ -353,21 +384,10 @@ class SiameseFaceRecognition:
         print(f"\nDataset loaded successfully!")
         print("=" * 50)
 
-        print(f"Training pairs: {len(train_pairs):,} "
-              f"({np.sum(train_labels == 1):,} positive, "
-              f"{np.sum(train_labels == 0):,} negative)")
-
-        print(f"Validation pairs: {len(val_pairs):,} "
-              f"({np.sum(val_labels == 1):,} positive, "
-              f"{np.sum(val_labels == 0):,} negative)")
-
-        print(f"Test pairs: {len(test_pairs):,} "
-              f"({np.sum(test_labels == 1):,} positive, "
-              f"{np.sum(test_labels == 0):,} negative)")
-
-        print(f"\nUnique people - Train: {len(train_person_images)}, Test: {len(test_person_images)}")
+        for key, val in self.stats.items():
+            print(f"{key}: {val}")
 
         print(f"Images resized from original to: {self.input_shape[0]}x{self.input_shape[1]}")
         print("=" * 50)
 
-        return train_person_images, test_person_images
+        return self.train_person_images, self.test_person_images
