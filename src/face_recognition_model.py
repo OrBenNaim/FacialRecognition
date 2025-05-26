@@ -9,6 +9,7 @@ import warnings
 from typing import Tuple, List, Dict, Optional, Any, Counter
 
 from src.constants import RANDOM_SEED
+from src.utils import plot_distribution_charts
 
 # Suppress TensorFlow warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -484,3 +485,5 @@ class SiameseFaceRecognition:
             print(f"{key}: {val}\n")
 
         print("=" * 50)
+
+        plot_distribution_charts(Counter(self.train_val_dist), Counter(self.test_dist))
