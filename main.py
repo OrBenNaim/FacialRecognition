@@ -13,11 +13,7 @@ if __name__ == '__main__':
     # Analyze dataset first
     siamese_model.analyze_dataset_distribution()
 
-
-    # train_person_images, test_person_images = siamese_model.load_lfw_dataset(DATA_PATH, TRAIN_FILE,
-    #                                                                          TEST_FILE, VALIDATION_SPLIT)
-
     # Run the model
-    # siamese_model.run_complete_experiment(DATA_PATH, TRAIN_FILE, TEST_FILE)
+    siamese_model.run_complete_experiment()
 
     print("\nTo run the experiment, update the paths above and uncomment the execution lines!")
