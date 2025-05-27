@@ -44,67 +44,47 @@ class SiameseFaceRecognition:
             The input_shape parameter defines the size images will be resized to
             during loading, NOT the original size of your image files.
         """
-        # Input shape for the images (height, width, channels)
+        # Store the target shape for input images (height, width, channels)
         self.input_shape = input_shape
 
-        # The main Siamese model that computes similarity between image pairs
-        self.model: Optional[Model] = None
+        # Initialize model components (built in a separate method)
+        self.model: Optional[Model] = None  # Main Siamese network that computes similarity between image pairs
+        self.base_network: Optional[Model] = None  # Feature extractor
+        self.history: Optional[Dict[str, List[float]]] = None # Training history
+        # containing loss and metrics for each epoch
 
-        # Base network used as a feature extractor in the Siamese architecture
-        self.base_network: Optional[Model] = None
+        # Initialize data storage for training/validation set
+        self.train_val_person_images: Optional[Dict[str, List[str]]] = None  # Person->image keys (e.g.,'John_Doe_0001')
+        self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None  # Image key -> image data (matrix of pixels)
+        self.train_val_dist = None  # Distribution of images per person
 
-        # Training history containing loss and metrics for each epoch
-        self.history: Optional[Dict[str, List[float]]] = None
+        # Initialize data storage for a test set
+        self.test_person_images: Optional[Dict[str, List[str]]] = None  # Person -> image keys (e.g.,'Alex_Con_0003')
+        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None  # Image key -> image data
+        self.test_dist = None  # Distribution of images per person
 
-        # Dictionary mapping person names to their image keys (e.g., {'John_Doe': ['John_Doe_0001', 'John_Doe_0002']})
-        self.train_val_person_images: Optional[Dict[str, List[str]]] = None
-        self.test_person_images: Optional[Dict[str, List[str]]] = None
+        # Initialize arrays for training data
+        self.train_images: Optional[np.ndarray] = None  # Array of individual training images
+        self.train_labels: Optional[np.ndarray] = None  # Labels corresponding to train_images
+        self.train_pairs: Optional[np.ndarray] = None  # Array of training image pairs used for Siamese network training
+        self.train_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for training pairs
+        # (1: same person, 0: different person)
 
-        # Dictionary mapping image keys to numpy arrays of image data (e.g., {'John_Doe_0001': array([...])})
-        self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None
-        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
 
-        # Array of individual training images
-        self.train_images: Optional[np.ndarray] = None
+        # Initialize arrays for validation data
+        self.val_images: Optional[np.ndarray] = None  # Array of validation images
+        self.val_labels: Optional[np.ndarray] = None  # Labels corresponding to val_images
+        self.val_pairs: Optional[np.ndarray] = None  # Array of validation image pairs
+        self.val_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for validation pairs
 
-        # Labels corresponding to train_images
-        self.train_labels: Optional[np.ndarray] = None
-
-        # Array of validation images
-        self.val_images: Optional[np.ndarray] = None
-
-        # Labels corresponding to val_images
-        self.val_labels: Optional[np.ndarray] = None
-
-        # Array of test images
-        self.test_images: Optional[np.ndarray] = None
-
-        # Labels corresponding to test_images
-        self.test_labels: Optional[np.ndarray] = None
-
-        # Array of training image pairs used for Siamese network training
-        self.train_pairs: Optional[np.ndarray] = None
-
-        # Binary labels for training pairs (1: same person, 0: different person)
-        self.train_pair_labels: Optional[np.ndarray] = None
-
-        # Array of validation image pairs
-        self.val_pairs: Optional[np.ndarray] = None
-
-        # Binary labels for validation pairs (1: same person, 0: different person)
-        self.val_pair_labels: Optional[np.ndarray] = None
-
-        # Array of test image pairs
-        self.test_pairs: Optional[np.ndarray] = None
-
-        # Binary labels for test pairs (1: same person, 0: different person)
-        self.test_pair_labels: Optional[np.ndarray] = None
+        # Initialize arrays for test data
+        self.test_images: Optional[np.ndarray] = None  # Array of test images
+        self.test_labels: Optional[np.ndarray] = None  # Labels corresponding to test_images
+        self.test_pairs: Optional[np.ndarray] = None  # Array of test image pairs
+        self.test_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for test pairs
 
         # Dictionary storing various statistics about the dataset and training
         self.stats: Dict[str, Any] = {}
-
-        self.train_val_dist = None
-        self.test_dist = None
 
         print(f"Siamese Face Recognition initialized with input shape: {input_shape}")
 
@@ -145,22 +125,18 @@ class SiameseFaceRecognition:
         - Images are automatically resized to self.input_shape
         - Original image files are not modified
         """
-        # Validate inputs
+        # === Input Validation ===
+        # Ensure all required files and directories exist
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"Data path not found: {data_path}")
-
         if not os.path.exists(train_file):
             raise FileNotFoundError(f"Train file not found: {train_file}")
-
         if not os.path.exists(test_file):
             raise FileNotFoundError(f"Test file not found: {test_file}")
-
         if not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
-
         print(f"Image resize target: {self.input_shape[0]}x{self.input_shape[1]}")
-
         print("Loading LFW-a dataset...")
 
         # First, load all unique images and create a mapping
@@ -189,8 +165,8 @@ class SiameseFaceRecognition:
             - Pixel values normalized to [0, 1]
             - Skips missing images with a warning
             """
-            image_dict = {}  # Stores image_key -> image array
-            person_images = defaultdict(list)  # Stores person -> list of image keys
+            image_dict = {}  # Maps: image_key -> preprocessed image array
+            person_images = defaultdict(list)   # Maps: person_name -> list of their image keys
 
             with open(pairs_file, 'r') as f:
                 lines = f.readlines()
@@ -199,7 +175,8 @@ class SiameseFaceRecognition:
                 for i, line in enumerate(tqdm(lines[1:], desc="Loading images")):
                     parts = line.strip().split('\t')
 
-                    if len(parts) == 3:  # Same person pair format
+                    # === Handle Same Person Pairs ===
+                    if len(parts) == 3:  # Format: person_name, img1_num, img2_num
                         person_name = parts[0]
                         img1_num = int(parts[1])
                         img2_num = int(parts[2])
@@ -209,30 +186,29 @@ class SiameseFaceRecognition:
                             img_name = f"{person_name}_{img_num:04d}.jpg"
                             current_img_key = f"{person_name}_{img_num}"
 
-                            # Only load if we haven't seen this image before
+                            # Only process new images (avoid duplicates)
                             if current_img_key not in image_dict:
                                 img_path = os.path.join(base_path, person_name, img_name)
 
                                 if os.path.exists(img_path):
-                                    # Load and preprocess image
-                                    img = Image.open(img_path).convert('L')  # Convert to grayscale
-
-                                    # Resize to the model's expected input shape
+                                    # Load and preprocess image:
+                                    # 1. Convert to grayscale
+                                    # 2. Resize to target dimensions
+                                    # 3. Normalize pixel values to [0,1]
+                                    img = Image.open(img_path).convert('L')
                                     img = img.resize((self.input_shape[0], self.input_shape[1]))
-
-                                    # Normalize pixel values to [0, 1]
                                     img_array = np.array(img) / 255.0
 
+                                    # Store preprocessed image and update person's image list
                                     image_dict[current_img_key] = img_array
                                     person_images[person_name].append(current_img_key)
                                 else:
-                                    print(f"Warning: Image not found: {img_path}")
+                                    raise f"Warning: Image not found: {img_path}"
 
-                    elif len(parts) == 4:  # Different person pair
-                        person1 = parts[0]
-                        img1_num = int(parts[1])
-                        person2 = parts[2]
-                        img2_num = int(parts[3])
+                    # === Handle Different Person Pairs ===
+                    elif len(parts) == 4:  # Format: person1, img1_num, person2, img2_num
+                        person1, person2 = parts[0], parts[2]
+                        img1_num, img2_num = int(parts[1]), int(parts[3])
 
                         # Load first person's image
                         img1_name = f"{person1}_{img1_num:04d}.jpg"
@@ -242,6 +218,7 @@ class SiameseFaceRecognition:
                             img1_path = os.path.join(base_path, person1, img1_name)
 
                             if os.path.exists(img1_path):
+                                # Same preprocessing steps as above
                                 img = Image.open(img1_path).convert('L')
                                 img = img.resize((self.input_shape[0], self.input_shape[1]))
                                 img_array = np.array(img) / 255.0
@@ -306,59 +283,66 @@ class SiameseFaceRecognition:
                     img1_num = int(parts[1])
                     img2_num = int(parts[2])
 
+                    # Create lookup keys for both images
                     img1_key = f"{person_name}_{img1_num}"
                     img2_key = f"{person_name}_{img2_num}"
 
                     # Only add a pair if both images were successfully loaded
                     if img1_key in image_dict and img2_key in image_dict:
                         pairs.append([image_dict[img1_key], image_dict[img2_key]])
-                        labels.append(1)  # Same person
+                        labels.append(1)  # Label 1 indicates same person
 
                 elif len(parts) == 4:  # Different person (negative pair)
-                    person1 = parts[0]
-                    img1_num = int(parts[1])
-                    person2 = parts[2]
-                    img2_num = int(parts[3])
+                    person1, person2 = parts[0], parts[2]
+                    img1_num, img2_num = int(parts[1]), int(parts[3])
 
+                    # Create lookup keys for images from different people
                     img1_key = f"{person1}_{img1_num}"
                     img2_key = f"{person2}_{img2_num}"
 
+                    # Only create pair if both images were successfully loaded
                     if img1_key in image_dict and img2_key in image_dict:
                         pairs.append([image_dict[img1_key], image_dict[img2_key]])
-                        labels.append(0)  # Different person = 0
+                        labels.append(0)  # Label 0 indicates different people
 
+            # Convert lists to numpy arrays for model training
             return np.array(pairs), np.array(labels)
 
-        # Load all images from a training file
+        # === Step 1: Load Training Dataset ===
         print("Loading training images...")
+        # Load all unique images from a training file and create mappings
         self.train_val_image_dict, self.train_val_person_images = load_all_images(train_file, data_path)
 
-        # Load all images from a test file
+        # === Step 2: Load Test Dataset ===
         print("\nLoading test images...")
+        # Load all unique images from a test file and create mappings
         self.test_image_dict, self.test_person_images = load_all_images(test_file, data_path)
 
-        # Check for overlap between train_val_person_images and test_person_images
+        # === Step 3: Check Dataset Separation ===
+        # Identify any overlap between training and test sets (should be minimal)
         common_people = set(self.train_val_person_images.keys()) & set(self.test_person_images.keys())
         print(f"\nCommon people in train_val and test sets: {len(common_people)}")
 
-        # Load training pairs
+        # === Step 4: Create Image Pairs ===
         print("\nCreating training + validation pairs...")
+
+        # Create positive and negative pairs from training data
         train_val_pairs, train_val_labels = load_pairs(train_file, self.train_val_image_dict)
 
-        # Load test pairs
         print("\nCreating test pairs...")
+
+        # Create positive and negative pairs from test data
         test_pairs, test_labels = load_pairs(test_file, self.test_image_dict)
 
-        # Create validation split from training pairs
+        # === Step 5: Split Training Data ===
         print(f"\nSplitting training + validation data (validation split: {validation_split})...")
-
         train_pairs, val_pairs, train_labels, val_labels = train_test_split(
             train_val_pairs, train_val_labels, test_size=validation_split,
             random_state=RANDOM_SEED, stratify=train_val_labels
         )
 
-        # Extract unique images for compatibility with other methods
-        # This allows us to use individual images for one-shot learning evaluation
+        # === Step 6: Prepare Individual Images for One-shot Learning ===
+        # Extract all unique training images and their labels
         train_images = []
         train_image_labels = []
         for person, img_keys in self.train_val_person_images.items():
@@ -367,39 +351,35 @@ class SiameseFaceRecognition:
                     train_images.append(self.train_val_image_dict[img_key])
                     train_image_labels.append(person)
 
+        # Extract all unique test images and their labels
         test_images = []
         test_image_labels = []
-
         for person, img_keys in self.test_person_images.items():
-
             for img_key in img_keys:
-
                 if img_key in self.test_image_dict:
                     test_images.append(self.test_image_dict[img_key])
                     test_image_labels.append(person)
 
-        # Convert to numpy arrays
+        # === Step 7: Convert Lists to Arrays and Store Data ===
+        # Convert image lists to numpy arrays
         self.train_images = np.array(train_images)
         self.test_images = np.array(test_images)
 
-        # Store pairs for training
+        # Store paired data for model training
         self.train_pairs = train_pairs
         self.train_pair_labels = train_labels
-
-        # Store pairs for validation
         self.val_pairs = val_pairs
         self.val_pair_labels = val_labels
-
-        # Store pairs for test
         self.test_pairs = test_pairs
         self.test_pair_labels = test_labels
 
-        # Add channel dimension if needed (for grayscale images)
-        if len(self.train_images.shape) == 3:
+        # === Step 8: Final Data Processing ===
+        # Add channel dimension for grayscale images if needed
+        if len(self.train_images.shape) == 3:  # If images don't have channel dimension
             self.train_images = self.train_images[..., np.newaxis]
             self.test_images = self.test_images[..., np.newaxis]
 
-        # For compatibility, create fake labels for individual images
+        # Create sequential labels for individual images (for compatibility)
         self.train_labels = np.arange(len(self.train_images))
         self.test_labels = np.arange(len(self.test_images))
 
