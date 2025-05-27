@@ -1,3 +1,8 @@
+import torch
+
+# Add this with other constants
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 #================== Paths to CSV files ======================
 DATA_PATH = './DATA/LFW-a'  # Path to LFW-a dataset
 TRAIN_FILE = './DATA/pairsDevTrain.txt'  # Path to train.txt
