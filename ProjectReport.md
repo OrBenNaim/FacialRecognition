@@ -72,23 +72,54 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 - **Input Layer**: 128x128x1 (grayscale images)
 - **CNN Architecture**:
   ```
-  [Add your CNN layer structure here]
+  Layer 1: Conv2D(64, 10x10) -> ReLU -> MaxPool(2x2)
+  Layer 2: Conv2D(128, 7x7) -> ReLU -> MaxPool(2x2)
+  Layer 3: Conv2D(128, 4x4) -> ReLU -> MaxPool(2x2)
+  Layer 4: Conv2D(256, 4x4) -> ReLU
+  Flatten
+  Dense(4096) with Sigmoid activation
   ```
-
+  
 #### Siamese Configuration
 - Twin networks with shared weights
-- Input: Pairs of face images
-- Output: Similarity score
+- Input: Pairs of face images (128x128x1 each)
+- Processing: Parallel feature extraction through identical CNNs
+- Distance Metric: L1 (Manhattan) distance between embeddings
+- Output Layer: Single sigmoid unit for similarity score (0–1)
+- Loss Function: Binary Cross-Entropy
 
 ### 3.2 Design Choices
 #### Architecture Decisions
-1. **Input Size**: Optimized to 128x128 to balance detail preservation and computational efficiency
-2. **Grayscale Format**: Reduces input complexity while maintaining essential facial features
-3. **Shared Weights**: Ensures identical feature extraction from both images
+1. **Deep CNN Structure**:
+   - Progressive increase in filter count (64→128→128→256)
+   - Decreasing kernel sizes (10x10→7x7→4x4→4x4)
+   - MaxPooling in the first three layers for dimensionality reduction
+
+2. **Regularization Strategy**:
+   - L2 regularization on all convolutional layers (2e-4)
+   - L2 regularization on dense layer (1e-3)
+   - Dropout isn't used (following the original paper design)
+
+3. **Activation Functions**:
+   - ReLU for all convolutional layers for non-linearity
+   - Sigmoid for final dense layer-to-bound embeddings
+
+4. **Network Capacity**:
+   - 4096-dimensional embeddings for rich feature representation
+   - ~2.5M trainable parameters
 
 #### Parameter Selection
-- **Random Seed**: 42 (for reproducibility)
-- **Validation Split**: 0.2 (20% of training data)
-- **Preprocessing**: 
-  - Grayscale conversion for reduced complexity
-  - Normalization to [0,1] range for stable training
+- **Initialization**: Glorot uniform for stable training
+- **Optimizer**: Adam with learning rate 6e-5
+- **Batch Size**: Dynamic based on available memory
+- **Early Stopping**: 
+  - Patience of 5 epochs
+  - Monitored on validation loss
+  - Best model checkpointing
+
+#### Training Strategy
+1. **Initial Validation**: Sanity check by overfitting a small batch
+2. **Full Training**:
+   - Dynamic pair generation or preloaded pairs
+   - Validation monitoring
+   - Early stopping to prevent overfitting
