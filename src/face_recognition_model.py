@@ -1,21 +1,43 @@
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras import Model, Input, layers, regularizers, initializers, optimizers
+# Standard library imports
 import os
-from PIL import Image
-from sklearn.model_selection import train_test_split
-from collections import defaultdict
-from tqdm import tqdm
 import warnings
 from typing import Tuple, List, Dict, Optional, Any, Counter
+from collections import defaultdict
 
-from src.constants import RANDOM_SEED, EPOCHS, BATCH_SIZE, \
-    NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2, NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4, KERNAL_SIZE_LAYER1, \
-    KERNAL_SIZE_LAYER2, KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4, POOL_SIZE
+# Third-party imports
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+from PIL import Image
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
+
+# Local imports
+from src.constants import (
+    RANDOM_SEED, EPOCHS, BATCH_SIZE, DEVICE,
+    NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2,
+    NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4,
+    KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,
+    KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
+    POOL_SIZE
+)
 from src.utils import plot_distribution_charts
 
-# Suppress TensorFlow warnings for cleaner output
+# Set random seeds for reproducibility
+torch.manual_seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(RANDOM_SEED)
+    torch.cuda.manual_seed_all(RANDOM_SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+# Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
+
 
 class SiameseFaceRecognition:
     """
