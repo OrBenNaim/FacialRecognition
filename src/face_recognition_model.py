@@ -10,8 +10,6 @@ import torch  # Primary deep learning framework
 import torch.optim as optim  # Optimization algorithms
 import torch.nn as nn  # Neural network modules
 import torch.nn.functional as F  # Neural network functions
-from numpy import floating, ndarray, dtype
-from numpy._core.multiarray import _SCT
 from torch.utils.data import Dataset, DataLoader  # Data handling utilities
 from PIL import Image  # Image processing
 from sklearn.model_selection import train_test_split  # Dataset splitting
@@ -19,15 +17,15 @@ from tqdm import tqdm  # Progress bar functionality
 
 # Local imports - Constants and utility functions
 from src.constants import (
-    RANDOM_SEED,          # For reproducibility
-    EPOCHS,              # Number of training epochs
-    BATCH_SIZE,          # Size of training batches
+    RANDOM_SEED,  # For reproducibility
+    EPOCHS,  # Number of training epochs
+    BATCH_SIZE,  # Size of training batches
     NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2,  # Network architecture parameters
     NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4,  # Filter counts for conv layers
-    KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,        # Kernel sizes for conv layers
+    KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,  # Kernel sizes for conv layers
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
-    POOL_SIZE,           # Pooling layer size
-    LEARNING_RATE        # Learning rate for optimization
+    POOL_SIZE,  # Pooling layer size
+    LEARNING_RATE  # Learning rate for optimization
 )
 from src.utils import plot_distribution_charts  # Visualization utilities
 
@@ -960,8 +958,7 @@ class SiameseFaceRecognition:
                     loss = self.criterion(outputs, labels)
 
                     val_loss += loss.item()
-                    predictions = torch.tensor(predictions).view(-1)
-                    labels = torch.tensor(labels).view(-1)
+                    predictions = (outputs > 0.5).float()
                     val_acc += (predictions == labels).float().mean().item()
                     val_batches += 1
 
@@ -1028,8 +1025,7 @@ class SiameseFaceRecognition:
 
         return history
 
-    def evaluate_verification(self) -> tuple[
-        floating[Any], ndarray[Any, dtype[_SCT]], ndarray[Any, dtype[_SCT]], ndarray | None]:
+    def evaluate_verification(self) -> tuple[float, np.ndarray, np.ndarray, np.ndarray | None]:
         """
         Evaluate the model on a verification task (same/different person).
         """
