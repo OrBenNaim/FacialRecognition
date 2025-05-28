@@ -24,7 +24,7 @@ def plot_distribution_charts(train_val_dist: dict, test_dist: dict, save_dir: st
     sorted_test = dict(sorted(test_dist.items()))
 
     # ===== Training + Validation Distribution Plot =====
-    plt.figure(figsize=(12, 6))  # Create a new figure with specified size
+    plt.figure(figsize=(12, 6))  # Create a new figure with a specified size
 
     # Create x-axis positions starting from 1 instead of 0
     # This aligns the bars with their actual values (1 image, 2 images, etc.)
