@@ -3,6 +3,10 @@ import os
 import warnings
 from typing import List, Tuple, Dict, Optional, Any  # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
+import matplotlib.pyplot as plt
+import json
+from typing import Dict, List
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, f1_score
 
 # Third-party imports
 import numpy as np  # For numerical operations
@@ -796,7 +800,6 @@ class SiameseFaceRecognition:
         print("\n" + "=" * 50)
         print("Starting Training")
         print("=" * 50)
-        print("Following Karpathy's recipe: starting with simple baseline...")
 
         # Step 1: Create the model
         if self.model is None:
@@ -1025,6 +1028,151 @@ class SiameseFaceRecognition:
 
         return history
 
+    def analyze_results(self, history: Dict[str, List[float]], examples: Dict[str, List[tuple]]) -> None:
+        """
+        Analyze and visualize training results as required by the exercise.
+        """
+        # Create a figure for multiple plots
+        plt.figure(figsize=(15, 10))
+
+        # Plot 1: Training and Validation Loss
+        plt.subplot(2, 2, 1)
+        plt.plot(history['loss'], label='Training Loss')
+        plt.plot(history['val_loss'], label='Validation Loss')
+        plt.title('Model Loss Over Time')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+
+        # Plot 2: Training and Validation Accuracy
+        plt.subplot(2, 2, 2)
+        plt.plot(history['accuracy'], label='Training Accuracy')
+        plt.plot(history['val_accuracy'], label='Validation Accuracy')
+        plt.title('Model Accuracy Over Time')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+
+        # Save plots
+        plt.tight_layout()
+        plt.savefig('training_results.png')
+
+    def visualize_failures(self, num_examples: int = 5) -> None:
+        """
+        Visualize and analyze misclassified pairs as required by the exercise.
+        """
+        self.model.eval()
+        misclassified_pairs = []
+
+        with torch.no_grad():
+            for i in range(len(self.test_pairs)):
+                # Convert numpy arrays to PyTorch tensors
+                img1 = torch.from_numpy(self.test_pairs[i][0]).float()
+                img2 = torch.from_numpy(self.test_pairs[i][1]).float()
+
+                # Add batch and channel dimensions if needed
+                if len(img1.shape) == 2:  # If image is 2D (height x width)
+                    img1 = img1.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
+                    img2 = img2.unsqueeze(0).unsqueeze(0)
+                elif len(img1.shape) == 3:  # If image has channels but no batch
+                    img1 = img1.unsqueeze(0)
+                    img2 = img2.unsqueeze(0)
+
+                # Move to device
+                img1 = img1.to(device)
+                img2 = img2.to(device)
+
+                true_label = self.test_pair_labels[i]
+
+                output = self.model(img1, img2)
+                pred = (output > 0.5).float().item()
+
+                if pred != true_label:
+                    misclassified_pairs.append((
+                        img1.cpu().numpy(),
+                        img2.cpu().numpy(),
+                        true_label,
+                        pred
+                    ))
+
+                if len(misclassified_pairs) >= num_examples:
+                    break
+
+        # Visualize misclassified pairs
+        if misclassified_pairs:
+            fig, axes = plt.subplots(len(misclassified_pairs), 2, figsize=(8, 2 * len(misclassified_pairs)))
+            for i, (img1, img2, true_label, pred) in enumerate(misclassified_pairs):
+                if len(misclassified_pairs) == 1:
+                    axes[0].imshow(img1[0, 0], cmap='gray')
+                    axes[1].imshow(img2[0, 0], cmap='gray')
+                    axes[0].set_title(f'True: {true_label:.0f}, Pred: {pred:.0f}')
+                    axes[0].axis('off')
+                    axes[1].axis('off')
+                else:
+                    axes[i, 0].imshow(img1[0, 0], cmap='gray')
+                    axes[i, 1].imshow(img2[0, 0], cmap='gray')
+                    axes[i, 0].set_title(f'True: {true_label:.0f}, Pred: {pred:.0f}')
+                    axes[i, 0].axis('off')
+                    axes[i, 1].axis('off')
+
+            plt.tight_layout()
+            plt.savefig('misclassified_examples.png')
+        else:
+            print("No misclassified examples found in the test set!")
+
+    def calculate_detailed_metrics(self) -> Dict[str, float]:
+        """
+        Calculate detailed performance metrics as required by the exercise.
+        """
+        accuracy, predictions, labels, _ = self.evaluate_verification()
+
+        # Calculate ROC curve and AUC
+        fpr, tpr, thresholds = roc_curve(labels, predictions)
+        auc_score = auc(fpr, tpr)
+
+        # Calculate precision-recall curve
+        precision, recall, _ = precision_recall_curve(labels, predictions)
+        avg_precision = average_precision_score(labels, predictions)
+
+        # Calculate F1 score
+        pred_labels = (predictions > 0.5).astype(int)
+        f1 = f1_score(labels, pred_labels)
+
+        metrics = {
+            'accuracy': accuracy,
+            'auc': auc_score,
+            'average_precision': avg_precision,
+            'f1_score': f1
+        }
+
+        return metrics
+
+    def log_experiment_details(self) -> None:
+        """
+        Log all experimental details as required by the exercise.
+        """
+        experiment_details = {
+            'architecture': {
+                'layers': str(self.model),
+                'parameters': sum(p.numel() for p in self.model.parameters()),
+            },
+            'training': {
+                'batch_size': BATCH_SIZE,
+                'epochs': EPOCHS,
+                'learning_rate': self.optimizer.param_groups[0]['lr'],
+                'optimizer': self.optimizer.__class__.__name__,
+            },
+            'dataset': {
+                'train_pairs': len(self.train_pairs),
+                'val_pairs': len(self.val_pairs),
+                'test_pairs': len(self.test_pairs),
+            }
+        }
+
+        # Save experiment details to JSON
+        with open('experiment_details.json', 'w') as f:
+            json.dump(experiment_details, f, indent=4)
+
     def evaluate_verification(self) -> tuple[float, np.ndarray, np.ndarray, np.ndarray | None]:
         """
         Evaluate the model on a verification task (same/different person).
@@ -1099,13 +1247,49 @@ class SiameseFaceRecognition:
 
     def run_complete_experiment(self) -> None:
         """Run the complete experiment pipeline"""
-        print("\n" + "=" * 60)
-        print("SIAMESE NETWORK FOR ONE-SHOT FACE RECOGNITION")
-        print("=" * 60)
 
-        # Create and train the model
-        print("\nStep 1: Training Model")
-        if self.model is None:
-            self.create_siamese_network()
+        print("Starting experiment...")
 
-        self.train(EPOCHS, BATCH_SIZE)
+        # First, create the model
+        print("Creating Siamese Network...")
+        self.create_siamese_network()
+
+        # Log experiment setup before training
+        print("Logging experiment setup...")
+        self.log_experiment_details()
+
+        print("Training model...")
+        # Train the model and get history
+        history = self.train(EPOCHS, BATCH_SIZE)
+
+        print("\nCalculating detailed metrics...")
+        metrics = self.calculate_detailed_metrics()
+
+        print("\nAnalyzing results...")
+        # Collect some example pairs for visualization
+        example_pairs = {
+            'correct': [],
+            'incorrect': []
+        }
+        self.analyze_results(history, example_pairs)
+
+        print("\nVisualizing failure cases...")
+        self.visualize_failures()
+
+        # Save final metrics
+        final_results = {
+            'metrics': metrics,
+            'final_train_loss': history['loss'][-1],
+            'final_val_loss': history['val_loss'][-1],
+            'final_train_acc': history['accuracy'][-1],
+            'final_val_acc': history['val_accuracy'][-1]
+        }
+
+        with open('final_results.json', 'w') as f:
+            json.dump(final_results, f, indent=4)
+
+        print("\nExperiment completed!")
+        print(f"Final Accuracy: {metrics['accuracy']:.4f}")
+        print(f"Final AUC Score: {metrics['auc']:.4f}")
+        print(f"Final F1 Score: {metrics['f1_score']:.4f}")
+
