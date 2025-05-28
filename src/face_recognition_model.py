@@ -1115,7 +1115,7 @@ class SiameseFaceRecognition:
                     axes[i, 1].axis('off')
 
             plt.tight_layout()
-            plt.savefig('./src/images/misclassified_pairs.png')
+            plt.savefig('./src/images/misclassified_examples.png')
         else:
             print("No misclassified examples found in the test set!")
 
