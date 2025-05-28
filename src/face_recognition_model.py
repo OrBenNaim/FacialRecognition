@@ -1,12 +1,13 @@
 # Standard library imports
 import os
 import warnings
-from typing import Tuple, List, Dict, Optional, Any, Counter
-from collections import defaultdict
+from typing import List, Tuple, Dict, Optional, Any
+from collections import defaultdict, Counter
 
 # Third-party imports
 import numpy as np
 import torch
+import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -17,12 +18,12 @@ from tqdm import tqdm
 
 # Local imports
 from src.constants import (
-    RANDOM_SEED, EPOCHS, BATCH_SIZE, DEVICE,
+    RANDOM_SEED, EPOCHS, BATCH_SIZE,
     NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2,
     NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4,
     KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
-    POOL_SIZE
+    POOL_SIZE, LEARNING_RATE
 )
 from src.utils import plot_distribution_charts
 
@@ -38,10 +39,159 @@ if torch.cuda.is_available():
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
+# Check for GPU availability
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+
+class SiameseDataset(Dataset):
+    """Custom Dataset for Siamese Network pairs."""
+
+    def __init__(self, pairs, labels):
+        self.pairs = pairs
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        # Return a pair of images and label
+        img1 = torch.FloatTensor(self.pairs[idx, 0])
+        img2 = torch.FloatTensor(self.pairs[idx, 1])
+        label = torch.FloatTensor([self.labels[idx]])
+        return img1, img2, label
+
+
+class BaseNetwork(nn.Module):
+    """Base convolutional network for feature extraction in Siamese architecture."""
+
+    def __init__(self, input_shape):
+        super(BaseNetwork, self).__init__()
+
+        # Calculate the size after convolutions and pooling
+        # This is needed to determine the input size for the final dense layer
+        self.input_shape = input_shape
+
+        # Layer 1: Conv(64, 10x10) -> ReLU -> MaxPool(2x2)
+        self.conv1 = nn.Conv2d(
+            in_channels=input_shape[2],  # channels (1 for grayscale)
+            out_channels=NUM_OF_FILTERS_LAYER1,
+            kernel_size=KERNAL_SIZE_LAYER1,
+            padding=0
+        )
+        self.pool1 = nn.MaxPool2d(kernel_size=POOL_SIZE)
+
+        # Layer 2: Conv(128, 7x7) -> ReLU -> MaxPool(2x2)
+        self.conv2 = nn.Conv2d(
+            in_channels=NUM_OF_FILTERS_LAYER1,
+            out_channels=NUM_OF_FILTERS_LAYER2,
+            kernel_size=KERNAL_SIZE_LAYER2,
+            padding=0
+        )
+        self.pool2 = nn.MaxPool2d(kernel_size=POOL_SIZE)
+
+        # Layer 3: Conv(128, 4x4) -> ReLU -> MaxPool(2x2)
+        self.conv3 = nn.Conv2d(
+            in_channels=NUM_OF_FILTERS_LAYER2,
+            out_channels=NUM_OF_FILTERS_LAYER3,
+            kernel_size=KERNAL_SIZE_LAYER3,
+            padding=0
+        )
+        self.pool3 = nn.MaxPool2d(kernel_size=POOL_SIZE)
+
+        # Layer 4: Conv(256, 4x4) -> ReLU (no pooling)
+        self.conv4 = nn.Conv2d(
+            in_channels=NUM_OF_FILTERS_LAYER3,
+            out_channels=NUM_OF_FILTERS_LAYER4,
+            kernel_size=KERNAL_SIZE_LAYER4,
+            padding=0
+        )
+
+        # Calculate the flattened size after all convolutions
+        self._calculate_flatten_size()
+
+        # Dense layer: 4096 units with sigmoid activation
+        self.fc = nn.Linear(self.flatten_size, 4096)
+
+        # Initialize weights
+        self._initialize_weights()
+
+    def _calculate_flatten_size(self):
+        """Calculate the size of flattened features after convolutions."""
+        # Create a dummy input to calculate sizes
+        dummy_input = torch.zeros(1, self.input_shape[2], self.input_shape[0], self.input_shape[1])
+
+        # Pass through convolutional layers
+        x = self.pool1(F.relu(self.conv1(dummy_input)))
+        x = self.pool2(F.relu(self.conv2(x)))
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = F.relu(self.conv4(x))
+
+        # Get the flattened size
+        self.flatten_size = x.view(1, -1).size(1)
+
+    def _initialize_weights(self):
+        """Initialize weights using Glorot uniform (Xavier uniform in PyTorch)."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        """Forward pass through the network."""
+        # Convolutional layers with ReLU and pooling
+        x = self.pool1(F.relu(self.conv1(x)))
+        x = self.pool2(F.relu(self.conv2(x)))
+        x = self.pool3(F.relu(self.conv3(x)))
+        x = F.relu(self.conv4(x))
+
+        # Flatten
+        x = x.view(x.size(0), -1)
+
+        # Dense layer with sigmoid activation
+        x = torch.sigmoid(self.fc(x))
+
+        return x
+
+
+class SiameseNetwork(nn.Module):
+    """Complete Siamese Network architecture."""
+
+    def __init__(self, input_shape):
+        super(SiameseNetwork, self).__init__()
+
+        # Create the shared base network
+        self.base_network = BaseNetwork(input_shape)
+
+        # Final prediction layer
+        self.prediction = nn.Linear(4096, 1)
+
+        # Initialize the prediction layer
+        nn.init.xavier_uniform_(self.prediction.weight)
+        nn.init.constant_(self.prediction.bias, 0.5)
+
+    def forward(self, input1, input2):
+        """Forward pass for the Siamese network."""
+        # Process both inputs through the same network (shared weights)
+        output1 = self.base_network(input1)
+        output2 = self.base_network(input2)
+
+        # L1 distance between embeddings
+        l1_distance = torch.abs(output1 - output2)
+
+        # Final prediction with sigmoid
+        prediction = torch.sigmoid(self.prediction(l1_distance))
+
+        return prediction
+
 
 class SiameseFaceRecognition:
     """
-    A Siamese Neural Network implementation for one-shot face recognition tasks.
+    A Siamese Neural Network implementation for one-shot face recognition tasks using PyTorch.
 
     This class provides an end-to-end pipeline for:
     - Loading and preprocessing face image datasets
@@ -72,47 +222,46 @@ class SiameseFaceRecognition:
         # Store the target shape for input images (height, width, channels)
         self.input_shape = input_shape
 
-        # Initialize model components (built in a separate method)
-        self.model: Optional[Model] = None  # Main Siamese network that computes similarity between image pairs
-        self.base_network: Optional[Model] = None  # Feature extractor
-        self.history: Optional[Dict[str, List[float]]] = None # Training history
-        # containing loss and metrics for each epoch
+        # Initialize model components
+        self.model: Optional[SiameseNetwork] = None
+        self.optimizer: Optional[optim.Adam] = None
+        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+        self.history: Optional[Dict[str, List[float]]] = None
 
         # Initialize data storage for training/validation set
-        self.train_val_person_images: Optional[Dict[str, List[str]]] = None  # Person->image keys (e.g.,'John_Doe_0001')
-        self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None  # Image key -> image data (matrix of pixels)
-        self.train_val_dist = None  # Distribution of images per person
+        self.train_val_person_images: Optional[Dict[str, List[str]]] = None
+        self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None
+        self.train_val_dist = None
 
         # Initialize data storage for a test set
-        self.test_person_images: Optional[Dict[str, List[str]]] = None  # Person -> image keys (e.g.,'Alex_Con_0003')
-        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None  # Image key -> image data
-        self.test_dist = None  # Distribution of images per person
+        self.test_person_images: Optional[Dict[str, List[str]]] = None
+        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
+        self.test_dist = None
 
         # Initialize arrays for training data
-        self.train_images: Optional[np.ndarray] = None  # Array of individual training images
-        self.train_labels: Optional[np.ndarray] = None  # Labels corresponding to train_images
-        self.train_pairs: Optional[np.ndarray] = None  # Array of training image pairs used for Siamese network training
-        self.train_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for training pairs
-        # (1: same person, 0: different person)
-
+        self.train_images: Optional[np.ndarray] = None
+        self.train_labels: Optional[np.ndarray] = None
+        self.train_pairs: Optional[np.ndarray] = None
+        self.train_pair_labels: Optional[np.ndarray] = None
 
         # Initialize arrays for validation data
-        self.val_images: Optional[np.ndarray] = None  # Array of validation images
-        self.val_labels: Optional[np.ndarray] = None  # Labels corresponding to val_images
-        self.val_pairs: Optional[np.ndarray] = None  # Array of validation image pairs
-        self.val_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for validation pairs
+        self.val_images: Optional[np.ndarray] = None
+        self.val_labels: Optional[np.ndarray] = None
+        self.val_pairs: Optional[np.ndarray] = None
+        self.val_pair_labels: Optional[np.ndarray] = None
 
         # Initialize arrays for test data
-        self.test_images: Optional[np.ndarray] = None  # Array of test images
-        self.test_labels: Optional[np.ndarray] = None  # Labels corresponding to test_images
-        self.test_pairs: Optional[np.ndarray] = None  # Array of test image pairs
-        self.test_pair_labels: Optional[np.ndarray] = None  # Array of binary labels for test pairs
+        self.test_images: Optional[np.ndarray] = None
+        self.test_labels: Optional[np.ndarray] = None
+        self.test_pairs: Optional[np.ndarray] = None
+        self.test_pair_labels: Optional[np.ndarray] = None
 
         # Dictionary storing various statistics about the dataset and training
         self.stats: Dict[str, Any] = {}
 
         print(f"Siamese Face Recognition initialized with input shape: {input_shape}")
 
+    # Load training and test datasets
     def load_lfw_dataset(self, data_path: str, train_file: str, test_file: str, validation_split: float) -> None:
         """
         Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
@@ -191,7 +340,7 @@ class SiameseFaceRecognition:
             - Skips missing images with a warning
             """
             image_dict = {}  # Maps: image_key -> preprocessed image array
-            person_images = defaultdict(list)   # Maps: person_name -> list of their image keys
+            person_images = defaultdict(list)  # Maps: person_name -> list of their image keys
 
             with open(pairs_file, 'r') as f:
                 lines = f.readlines()
@@ -453,7 +602,7 @@ class SiameseFaceRecognition:
 
             # Calculate the distribution of images per person and store in stats
             'train+val_images_per_person_distribution': dict(
-            Counter(self.train_val_dist)),
+                Counter(self.train_val_dist)),
 
             'average_train+val_images_per_person': round(len(self.train_images) / len(self.train_val_person_images), 3),
 
@@ -492,55 +641,53 @@ class SiameseFaceRecognition:
 
         plot_distribution_charts(Counter(self.train_val_dist), Counter(self.test_dist))
 
-    def run_complete_experiment(self) -> None:
+    def create_siamese_network(self) -> SiameseNetwork:
         """
-        Run the complete experiment pipeline from data loading to report generation.
+        Create the complete Siamese network architecture using PyTorch.
 
-        2. Train the Siamese network
-        3. Evaluate on verification task
-        4. Evaluate one-shot learning performance
-        5. Generate visualizations
-        6. Create a comprehensive report
+        Architecture:
+        ------------
+            Input A -----> Base Network -----> Embedding A
+                                                    |
+                                                    v
+                                              L1 Distance --> Dense(1) --> Sigmoid
+                                                    ^
+                                                    |
+            Input B -----> Base Network -----> Embedding B
+                          (shared weights)
 
-        Note:
-            This is the main entry point for running the complete experiment.
-            All intermediate results are saved and can be accessed through
-            the instance attributes.
+        Returns:
+        -------
+            SiameseNetwork Object - The complete Siamese network model
         """
-        print("\n" + "=" * 60)
-        print("SIAMESE NETWORK FOR ONE-SHOT FACE RECOGNITION")
-        print("=" * 60)
+        # Create the model
+        self.model = SiameseNetwork(self.input_shape).to(device)
 
-        # Step 1: Train model (Assume data is loaded before inside main.py)
-        print("\nStep 1: Training Model")
-        self.train(EPOCHS, BATCH_SIZE)
+        # Create optimizer
+        self.optimizer = optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
 
-    def train(self, epochs: int, batch_size: int, pairs_per_epoch: Optional[int] = None) \
-            -> Dict[str, List[float]]:
+        # Print model architecture
+        print("\nSiamese Network Architecture:")
+        print("-" * 50)
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f"Total parameters: {total_params:,}")
+        print(f"Trainable parameters: {trainable_params:,}")
+        print("-" * 50)
+
+        return self.model
+
+    def train(self, epochs: int, batch_size: int, pairs_per_epoch: Optional[int] = None) -> Dict[str, List[float]]:
         """
-        Train the Siamese network following Karpathy's best practices.
-
-        This method implements a robust training procedure including
-        - Initial sanity check by overfitting a small batch
-        - Full dataset training with validation monitoring
-        - Early stopping to prevent overfitting
-        - Best model checkpointing
+        Train the Siamese network using PyTorch.
 
         Args:
             epochs: Maximum number of training epochs
-            batch_size: Batch size for training (adjust based on GPU memory)
-            pairs_per_epoch: Number of pairs to generate per epoch. If None, use preloaded pairs from files
+            batch_size: Batch size for training
+            pairs_per_epoch: Number of pairs to generate per epoch (if not using preloaded)
 
         Returns:
-            Dict containing training history:
-                - 'loss': Training loss per epoch
-                - 'accuracy': Training accuracy per epoch
-                - 'val_loss': Validation loss per epoch
-                - 'val_accuracy': Validation accuracy per epoch
-
-        Note:
-            The method automatically detects whether to use preloaded pairs
-            (from pairsDevTrain.txt) or generate pairs dynamically.
+            Dict containing training history
         """
         print("\n" + "=" * 50)
         print("Starting Training")
@@ -552,48 +699,64 @@ class SiameseFaceRecognition:
             self.create_siamese_network()
 
         print(f"\n✓ Model created successfully!")
-        print(f"  Total parameters: {self.model.count_params():,}")
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"  Total parameters: {total_params:,}")
 
-        # Check if we have preloaded pairs from files
+        # Check if we have preloaded pairs
         use_preloaded_pairs = hasattr(self, 'train_pairs') and self.train_pairs is not None
 
         if use_preloaded_pairs:
             print(f"\nUsing pre-loaded pairs from file:")
             print(f"  Training pairs: {len(self.train_pairs):,}")
             print(f"  Validation pairs: {len(self.val_pairs):,}")
-
         else:
-            print(f"\nWill generate {pairs_per_epoch or 20000} pairs per epoch dynamically")
+            raise f"\nThere is a problem with self.train_pairs"
 
-        # Step 2: Sanity check - overfit a single batch first
+        # Step 2: Check - overfit a single batch
         print("\n" + "-" * 50)
         print("Step 1: Overfitting a single batch to verify model works...")
         print("-" * 50)
 
-        if use_preloaded_pairs:
-            # Use the first 32 pairs from preloaded data
-            small_pairs = self.train_pairs[:32]
-            small_labels = self.train_pair_labels[:32]
-        else:
-            # Generate pairs dynamically
-            small_pairs, small_labels = self.create_pairs(
-                self.train_images[:20],
-                self.train_labels[:20],
-                32
-            )
+        # Prepare a small batch for check
+        small_pairs = self.train_pairs[:32]
+        small_labels = self.train_pair_labels[:32]
 
-        # Train on a single batch to verify gradient flow
+        # Convert to PyTorch tensors
+        small_dataset = SiameseDataset(small_pairs, small_labels)
+        small_loader = DataLoader(small_dataset, batch_size=32, shuffle=False)
+
+        # Train on single batch
         print("Batch | Loss    | Accuracy | Status")
         print("-" * 40)
 
+        self.model.train()
         for i in range(10):
-            loss, acc = self.model.train_on_batch([small_pairs[:, 0], small_pairs[:, 1]],small_labels)
-            status = "Good" if acc > 0.7 else "→ Learning"
-            print(f"{i + 1:>5} | {loss:>7.4f} | {acc:>8.4f} | {status}")
+            for img1, img2, labels in small_loader:
+                img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+
+                # Add channel dimension if needed
+                if len(img1.shape) == 3:
+                    img1 = img1.unsqueeze(1)
+                    img2 = img2.unsqueeze(1)
+
+                # Forward pass
+                self.optimizer.zero_grad()
+                outputs = self.model(img1, img2)
+                loss = self.criterion(outputs, labels)
+
+                # Backward pass
+                loss.backward()
+                self.optimizer.step()
+
+                # Calculate accuracy
+                predictions = (outputs > 0.5).float()
+                acc = (predictions == labels).float().mean().item()
+
+                status = "Good" if acc > 0.7 else "→ Learning"
+                print(f"{i + 1:>5} | {loss.item():>7.4f} | {acc:>8.4f} | {status}")
 
         if acc < 0.9:
             print("\nWarning: Model may not be learning properly on small batch")
-
         else:
             print("\nModel successfully overfits small batch - architecture is working!")
 
@@ -614,78 +777,110 @@ class SiameseFaceRecognition:
         best_val_loss = float('inf')
         patience_counter = 0
         patience = 5
+        best_model_state = None
 
         # Training loop
         print("\nEpoch | Train Loss | Train Acc | Val Loss | Val Acc | Status")
         print("-" * 70)
 
         for epoch in range(epochs):
-            # Prepare training data for this epoch
-            if use_preloaded_pairs:
-                # Use preloaded pairs
-                train_pairs = self.train_pairs
-                train_pair_labels = self.train_pair_labels
-                val_pairs = self.val_pairs
-                val_pair_labels = self.val_pair_labels
 
-                # Shuffle training data for better generalization
-                indices = np.random.permutation(len(train_pairs))
-                train_pairs = train_pairs[indices]
-                train_pair_labels = train_pair_labels[indices]
-            else:
-                # Generate training pairs dynamically
-                train_pairs, train_pair_labels = self.create_pairs(
-                    self.train_images,
-                    self.train_labels,
-                    pairs_per_epoch or 20000
-                )
+            # Prepare data loaders
+            indices = np.random.permutation(len(self.train_pairs))  # Shuffle indices
+            train_pairs = self.train_pairs[indices]
+            train_pair_labels = self.train_pair_labels[indices]
+            val_pairs = self.val_pairs
+            val_pair_labels = self.val_pair_labels
 
-                # Generate validation pairs
-                val_pairs, val_pair_labels = self.create_pairs(
-                    self.val_images,
-                    self.val_labels,
-                    (pairs_per_epoch or 20000) // 5
-                )
+            # Create data loaders
+            train_dataset = SiameseDataset(train_pairs, train_pair_labels)
+            val_dataset = SiameseDataset(val_pairs, val_pair_labels)
 
-            # Train for one epoch
-            h = self.model.fit(
-                [train_pairs[:, 0], train_pairs[:, 1]],
-                train_pair_labels,
-                batch_size=batch_size,
-                epochs=1,
-                validation_data=(
-                    [val_pairs[:, 0], val_pairs[:, 1]],
-                    val_pair_labels
-                ),
-                verbose=0  # Suppress default output for custom formatting
-            )
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+            # Training phase
+            self.model.train()
+            train_loss = 0.0
+            train_acc = 0.0
+            train_batches = 0
+
+            for img1, img2, labels in train_loader:
+                img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+
+                # Add channel dimension if needed
+                if len(img1.shape) == 3:
+                    img1 = img1.unsqueeze(1)
+                    img2 = img2.unsqueeze(1)
+
+                # Forward pass
+                self.optimizer.zero_grad()
+                outputs = self.model(img1, img2)
+                loss = self.criterion(outputs, labels)
+
+                # Backward pass
+                loss.backward()
+                self.optimizer.step()
+
+                # Track metrics
+                train_loss += loss.item()
+                predictions = (outputs > 0.5).float()
+                train_acc += (predictions == labels).float().mean().item()
+                train_batches += 1
+
+            # Calculate average training metrics
+            avg_train_loss = train_loss / train_batches
+            avg_train_acc = train_acc / train_batches
+
+            # Validation phase
+            self.model.eval()
+            val_loss = 0.0
+            val_acc = 0.0
+            val_batches = 0
+
+            with torch.no_grad():
+                for img1, img2, labels in val_loader:
+                    img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+
+                    # Add channel dimension if needed
+                    if len(img1.shape) == 3:
+                        img1 = img1.unsqueeze(1)
+                        img2 = img2.unsqueeze(1)
+
+                    outputs = self.model(img1, img2)
+                    loss = self.criterion(outputs, labels)
+
+                    val_loss += loss.item()
+                    predictions = (outputs > 0.5).float()
+                    val_acc += (predictions == labels).float().mean().item()
+                    val_batches += 1
+
+            # Calculate average validation metrics
+            avg_val_loss = val_loss / val_batches
+            avg_val_acc = val_acc / val_batches
 
             # Update history
-            train_loss = h.history['loss'][0]
-            train_acc = h.history['accuracy'][0]
-            val_loss = h.history['val_loss'][0]
-            val_acc = h.history['val_accuracy'][0]
-
-            history['loss'].append(train_loss)
-            history['accuracy'].append(train_acc)
-            history['val_loss'].append(val_loss)
-            history['val_accuracy'].append(val_acc)
+            history['loss'].append(avg_train_loss)
+            history['accuracy'].append(avg_train_acc)
+            history['val_loss'].append(avg_val_loss)
+            history['val_accuracy'].append(avg_val_acc)
 
             # Check for improvement
-            #status = ""
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
                 patience_counter = 0
-                # Save the best model
-                self.model.save_weights('best_model.weights.h5')
+                # Save the best model state
+                best_model_state = self.model.state_dict().copy()
+                torch.save(best_model_state, 'best_model.pth')
                 status = "✓ Best"
+
             else:
                 patience_counter += 1
                 status = f"↓ Wait {patience_counter}/{patience}"
 
             # Print epoch results
-            print(f"{epoch + 1:>5} | {train_loss:>10.4f} | {train_acc:>9.4f} | "
-                  f"{val_loss:>8.4f} | {val_acc:>7.4f} | {status}")
+            print(f"{epoch + 1:>5} | {avg_train_loss:>10.4f} | {avg_train_acc:>9.4f} | "
+                  f"{avg_val_loss:>8.4f} | {avg_val_acc:>7.4f} | {status}")
 
             # Early stopping check
             if patience_counter >= patience:
@@ -695,7 +890,7 @@ class SiameseFaceRecognition:
 
         # Load best weights
         print("\n✓ Loading best model weights...")
-        self.model.load_weights('best_model.weights.h5')
+        self.model.load_state_dict(torch.load('best_model.pth'))
 
         # Store training history and statistics
         self.history = history
@@ -723,143 +918,65 @@ class SiameseFaceRecognition:
 
         return history
 
-    def create_siamese_network(self) -> Model:
+    def evaluate_verification(self) -> Tuple[float, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Create the complete Siamese network architecture.
-
-        This method creates the full Siamese network by:
-        1. Creating the shared base network
-        2. Processing two inputs through the same network
-        3. Computing L1 distance between embeddings
-        4. Adding the final classification layer
-
-        Returns:
-            tf.keras.Model: The complete compiled Siamese network
-
-        Architecture:
-            Input A -----> Base Network -----> Embedding A
-                                                    |
-                                                    v
-                                              L1 Distance --> Dense(1) --> Sigmoid
-                                                    ^
-                                                    |
-            Input B -----> Base Network -----> Embedding B
-                          (shared weights)
+        Evaluate the model on verification task (same/different person).
         """
-        # Create the base network for feature extraction
-        self.base_network = self.create_base_network()
+        print("\n" + "=" * 50)
+        print("Evaluating Verification Performance")
+        print("=" * 50)
 
-        # Print base network summary for debugging
-        print("\nBase Network Architecture:")
-        print("-" * 50)
-        self.base_network.summary()
+        # Use test pairs
+        test_dataset = SiameseDataset(self.test_pairs, self.test_pair_labels)
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-        # Define input layers for the two images
-        input_a = Input(shape=self.input_shape, name='input_image_a')
-        input_b = Input(shape=self.input_shape, name='input_image_b')
+        self.model.eval()
+        all_predictions = []
+        all_labels = []
 
-        # Process both inputs through the same network (shared weights)
-        # This is the key aspect of Siamese networks
-        processed_a = self.base_network(input_a)
-        processed_b = self.base_network(input_b)
+        with torch.no_grad():
+            for img1, img2, labels in test_loader:
+                img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
-        # L1 distance layer (Manhattan distance)
-        # |f(a) - f(b)| where f is the base network
-        l1_distance = (layers.Lambda(lambda tensors: tf.abs(tensors[0] - tensors[1]),name='l1_distance')
-                       ([processed_a, processed_b]))
+                # Add channel dimension if needed
+                if len(img1.shape) == 3:
+                    img1 = img1.unsqueeze(1)
+                    img2 = img2.unsqueeze(1)
 
-        # Final prediction layer
-        # Single sigmoid unit for binary classification
-        prediction = layers.Dense(
-            units=1,
-            activation='sigmoid',
-            kernel_initializer='glorot_uniform',
-            bias_initializer=initializers.Constant(0.5),
-            name='prediction'
-        )(l1_distance)
+                outputs = self.model(img1, img2)
+                all_predictions.extend(outputs.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
 
-        # Create the complete model
-        self.model = Model(
-            inputs=[input_a, input_b],
-            outputs=prediction,
-            name='siamese_network'
-        )
+        # Convert to numpy arrays
+        predictions = np.array(all_predictions)
+        test_labels = np.array(all_labels).flatten()
 
-        # Compile with binary cross-entropy (as in the paper)
-        # Using Adam optimizer with learning rate from the paper
-        self.model.compile(
-            optimizer=optimizers.Adam(learning_rate=0.00006),
-            loss='binary_crossentropy',
-            metrics=['accuracy']
-        )
+        # Calculate metrics
+        pred_labels = (predictions > 0.5).astype(int).flatten()
+        accuracy = np.mean(pred_labels == test_labels)
 
-        print("\nComplete Siamese Network Architecture:")
-        print("-" * 50)
-        self.model.summary()
-        print("-" * 50)
+        # Per-class metrics
+        positive_mask = test_labels == 1
+        negative_mask = test_labels == 0
 
-        return self.model
+        tpr = np.mean(pred_labels[positive_mask] == 1) if np.any(positive_mask) else 0
+        tnr = np.mean(pred_labels[negative_mask] == 0) if np.any(negative_mask) else 0
 
-    def create_base_network(self) -> Model:
-        """
-        Create the base convolutional network for feature extraction.
+        print(f"Overall Accuracy: {accuracy:.4f}")
+        print(f"True Positive Rate: {tpr:.4f}")
+        print(f"True Negative Rate: {tnr:.4f}")
 
-        This network is used as the shared component in the Siamese architecture,
-        processing both input images through the same set of weights.
+        return accuracy, predictions, test_labels, self.test_pairs
 
-        Architecture based on the original paper:
-        - 4 convolutional layers with increasing filter sizes
-        - MaxPooling after first 3 conv layers
-        - Flatten and dense layer for final embedding
+    def run_complete_experiment(self) -> None:
+        """Run the complete experiment pipeline"""
+        print("\n" + "=" * 60)
+        print("SIAMESE NETWORK FOR ONE-SHOT FACE RECOGNITION")
+        print("=" * 60)
 
-        Returns:
-            tf.keras.Model: The base network model that outputs 4096-D embeddings
+        # Create and train the model
+        print("\nStep 1: Training Model")
+        if self.model is None:
+            self.create_siamese_network()
 
-        Note:
-            The architecture is optimized for face recognition with:
-            - L2 regularization to prevent overfitting
-            - Glorot uniform initialization for stable training
-            - Sigmoid activation in the final layer for bounded outputs
-        """
-        # Define input layer
-        input_layer = Input(shape=self.input_shape, name='base_input')
-
-        # Layer 1: Conv(64, 10x10) -> ReLU -> MaxPool(2x2)
-        # Large kernel size for initial feature detection
-        x = layers.Conv2D(filters=NUM_OF_FILTERS_LAYER1, kernel_size=KERNAL_SIZE_LAYER1, activation='relu',
-                          kernel_initializer='glorot_uniform',
-                          kernel_regularizer=regularizers.l2(2e-4), name='conv1')(input_layer)
-
-        x = layers.MaxPooling2D(pool_size=POOL_SIZE, name='pool1')(x)
-
-        # Layer 2: Conv(128, 7x7) -> ReLU -> MaxPool(2x2)
-        # Increasing filters for more complex features
-        x = layers.Conv2D(filters=NUM_OF_FILTERS_LAYER2, kernel_size=KERNAL_SIZE_LAYER2, activation='relu', kernel_initializer='glorot_uniform',
-                          kernel_regularizer=regularizers.l2(2e-4), name='conv2')(x)
-
-        x = layers.MaxPooling2D(pool_size=POOL_SIZE, name='pool2')(x)
-
-        # Layer 3: Conv(128, 4x4) -> ReLU -> MaxPool(2x2)
-        # Maintain filter count but reduce kernel size
-        x = layers.Conv2D(filters=NUM_OF_FILTERS_LAYER3, kernel_size=KERNAL_SIZE_LAYER3, activation='relu', kernel_initializer='glorot_uniform',
-                          kernel_regularizer=regularizers.l2(2e-4), name='conv3')(x)
-
-        x = layers.MaxPooling2D(pool_size=POOL_SIZE, name='pool3')(x)
-
-        # Layer 4: Conv(256, 4x4) -> ReLU
-        # Final convolutional layer without pooling
-        x = layers.Conv2D(filters=NUM_OF_FILTERS_LAYER4, kernel_size=KERNAL_SIZE_LAYER4, activation='relu', kernel_initializer='glorot_uniform',
-                          kernel_regularizer=regularizers.l2(2e-4), name='conv4')(x)
-
-        # Flatten for dense layer
-        x = layers.Flatten(name='flatten')(x)
-
-        # Dense layer: 4096 units with sigmoid activation
-        # Sigmoid bounds outputs to [0, 1] for stable distance computation
-        x = layers.Dense(units=4096, activation='sigmoid', kernel_initializer='glorot_uniform',
-                         kernel_regularizer=regularizers.l2(1e-3), name='embedding')(x)
-
-        # Create and return the model
-        model = Model(inputs=input_layer, outputs=x, name='base_network')
-
-        return model
+        self.train(EPOCHS, BATCH_SIZE)
