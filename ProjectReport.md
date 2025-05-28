@@ -118,8 +118,167 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
   - Best model checkpointing
 
 #### Training Strategy
-1. **Initial Validation**: Sanity check by overfitting a small batch
+1. **Initial Validation**: Check by overfitting a small batch
 2. **Full Training**:
    - Dynamic pair generation or preloaded pairs
    - Validation monitoring
    - Early stopping to prevent overfitting
+
+
+## 4. Experimental Results and Analysis
+
+### 4.1 Training Performance
+#### Initial Experiment Results
+- **Hardware**: CUDA-enabled GPU
+- **Total Parameters**: 68,311,873
+- **Total Epochs**: 9 (early stopping triggered)
+- **Batch Size**: 32 (for initial small batch test)
+
+#### Training Progress:
+1. **Small Batch Test Phase**:
+   - Initial accuracy: 0.5938 (epoch 1)
+   - Final accuracy: 0.7188 (epoch 10)
+   - Failed to reach target accuracy (0.9)
+   - Showed slow but steady improvement
+   - Warning: Model demonstrated suboptimal learning on a small batch
+
+2. **Full Dataset Training**:
+   - **Training Loss Progress**:
+     - Initial: 0.6812 → Final: 0.0775
+     - Rapid improvement from epoch 4 onwards
+   
+   - **Training Accuracy Progress**:
+     - Initial: 0.5722 → Final: 0.9909
+     - Crossed 0.80 threshold at epoch 6
+     
+   - **Validation Performance**:
+     - Best validation loss: 0.5681 (epoch 4)
+     - Final validation accuracy: 0.7351
+     - Early stopping triggered at epoch 9
+
+#### Learning Curves Analysis
+![Training History](./training_results.png)
+- **Key Observations**:
+  - Clear signs of overfitting after epoch 4
+  - Training accuracy continued improving while validation plateaued
+  - Significant gap between training and validation performance
+  - Early stopping successfully prevented further overfitting
+
+### 4.2 Model Performance Metrics
+#### Overall Metrics
+- **Test Accuracy**: 70.40%
+- **AUC Score**: 0.7649
+- **F1 Score**: 0.7213
+- **True Positive Rate**: 0.7660
+- **True Negative Rate**: 0.6420
+
+#### Performance Analysis
+1. **Success Cases**:
+   - Better performance on positive pairs (76.60% accuracy)
+   - Consistent learning throughout the training phase
+   
+2. **Challenge Cases**:
+   - Lower performance on negative pairs (64.20% accuracy)
+   - Significant gap between training and validation accuracy
+   - Failed to achieve target accuracy in a small batch test
+   - Signs of overfitting despite early stopping
+
+This initial experiment reveals several challenges:
+1. The model shows signs of overfitting, with training accuracy reaching 99% while validation stays around 73%
+2. The performance gap between positive and negative pairs suggests potential bias
+3. The small batch test failure indicates potential issues with the initial learning phase
+4. Despite having a large number of parameters (68M), the model achieves moderate performance on the test set
+
+These results suggest the need for:
+1. Better regularization techniques
+2. Revised learning rate strategy
+3. Potential architectural modifications
+4. Investigation of small batch learning issues
+
+### 4.3 Error Analysis
+#### Misclassification Examples
+![Misclassified Examples](./misclassified_examples.png)
+
+#### Common Error Patterns
+1. **False Positives**:
+   - Similar facial features leading to mismatches
+   - Lighting conditions affecting recognition
+   
+2. **False Negatives**:
+   - Extreme pose variations
+   - Significant expression changes
+   
+### 4.4 Parameter Sensitivity Analysis
+#### Key Parameters Impact
+1. **Learning Rate**:
+   - Tested values: [X, Y, Z]
+   - Optimal value: X
+   - Impact on convergence: [observations]
+
+2. **Batch Size**:
+   - Tested values: [X, Y, Z]
+   - Optimal value: X
+   - Trade-offs observed: [details]
+
+3. **Network Architecture**:
+   - Variations tested: [list modifications]
+   - Performance impact: [observations]
+
+### 4.5 Comparison with Paper Results
+- **Original Paper Performance**: XX.XX%
+- **Our Implementation**: XX.XX%
+- **Key Differences**:
+  1. [Difference 1]
+  2. [Difference 2]
+  3. [Implementation variations]
+
+## 5. Conclusions and Future Work
+
+### 5.1 Key Findings
+1. **Architecture Effectiveness**:
+   - [Main observation about the architecture]
+   - [Performance highlights]
+
+2. **Dataset Insights**:
+   - [Key learnings about the dataset]
+   - [Impact on model performance]
+
+3. **Training Process**:
+   - [Important observations]
+   - [Critical factors for success]
+
+### 5.2 Limitations
+1. **Technical Limitations**:
+   - [Computational constraints]
+   - [Architecture limitations]
+
+2. **Dataset Limitations**:
+   - [Data quality issues]
+   - [Distribution challenges]
+
+### 5.3 Future Improvements
+1. **Architecture Enhancements**:
+   - [Proposed modification 1]
+   - [Proposed modification 2]
+
+2. **Training Optimizations**:
+   - [Suggestion 1]
+   - [Suggestion 2]
+
+3. **Data Augmentation**:
+   - [Proposed technique 1]
+   - [Proposed technique 2]
+
+### 5.4 Potential Applications
+1. **Primary Use Cases**:
+   - [Application 1]
+   - [Application 2]
+
+2. **Extension Possibilities**:
+   - [Potential extension 1]
+   - [Potential extension 2]
+
+## 6. References
+1. Koch, G., Zemel, R., & Salakhutdinov, R. (2015). Siamese neural networks for one-shot image recognition. ICML deep learning workshop.
+2. [Additional reference]
+3. [Additional reference]
