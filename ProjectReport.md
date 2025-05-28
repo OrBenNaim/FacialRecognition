@@ -157,7 +157,7 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
      - Early stopping triggered at epoch 9
 
 #### Learning Curves Analysis
-![Training History](./training_results.png)
+![Training History](src/images/training_results.png)
 - **Key Observations**:
   - Clear signs of overfitting after epoch 4
   - Training accuracy continued improving while validation plateaued
@@ -197,7 +197,7 @@ These results suggest the need for:
 
 ### 4.3 Error Analysis
 #### Misclassification Examples
-![Misclassified Examples](./misclassified_examples.png)
+![Misclassified Examples](src/images/misclassified_examples.png)
 
 #### Common Error Patterns
 1. **False Positives**:
