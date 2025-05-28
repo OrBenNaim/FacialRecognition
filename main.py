@@ -1,5 +1,5 @@
 from src.constants import OPTIMIZED_IMG_SHAPE, DATA_PATH, TRAIN_FILE, TEST_FILE, VALIDATION_SPLIT
-from src.face_recognition_model import SiameseFaceRecognition
+from src.face_recognition_model_old_version import SiameseFaceRecognition
 
 if __name__ == '__main__':
     print("Siamese Network Implementation for One-shot Face Recognition")
@@ -15,5 +15,4 @@ if __name__ == '__main__':
     siamese_model.analyze_dataset_distribution()
 
     # Run the complete experiment
-
     siamese_model.run_complete_experiment()
