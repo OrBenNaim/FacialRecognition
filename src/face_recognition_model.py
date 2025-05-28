@@ -1,61 +1,96 @@
 # Standard library imports
 import os
 import warnings
-from typing import List, Tuple, Dict, Optional, Any
-from collections import defaultdict, Counter
+from typing import List, Tuple, Dict, Optional, Any  # Type hints for better code documentation
+from collections import defaultdict, Counter  # For efficient data structure handling
 
 # Third-party imports
-import numpy as np
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as transforms
-from PIL import Image
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
+import numpy as np  # For numerical operations
+import torch  # Primary deep learning framework
+import torch.optim as optim  # Optimization algorithms
+import torch.nn as nn  # Neural network modules
+import torch.nn.functional as F  # Neural network functions
+from numpy import floating, ndarray, dtype
+from numpy._core.multiarray import _SCT
+from torch.utils.data import Dataset, DataLoader  # Data handling utilities
+from PIL import Image  # Image processing
+from sklearn.model_selection import train_test_split  # Dataset splitting
+from tqdm import tqdm  # Progress bar functionality
 
-# Local imports
+# Local imports - Constants and utility functions
 from src.constants import (
-    RANDOM_SEED, EPOCHS, BATCH_SIZE,
-    NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2,
-    NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4,
-    KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,
+    RANDOM_SEED,          # For reproducibility
+    EPOCHS,              # Number of training epochs
+    BATCH_SIZE,          # Size of training batches
+    NUM_OF_FILTERS_LAYER1, NUM_OF_FILTERS_LAYER2,  # Network architecture parameters
+    NUM_OF_FILTERS_LAYER3, NUM_OF_FILTERS_LAYER4,  # Filter counts for conv layers
+    KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,        # Kernel sizes for conv layers
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
-    POOL_SIZE, LEARNING_RATE
+    POOL_SIZE,           # Pooling layer size
+    LEARNING_RATE        # Learning rate for optimization
 )
-from src.utils import plot_distribution_charts
+from src.utils import plot_distribution_charts  # Visualization utilities
 
-# Set random seeds for reproducibility
+# Setup for reproducibility
+# Setting random seeds for all components to ensure consistent results
 torch.manual_seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(RANDOM_SEED)
     torch.cuda.manual_seed_all(RANDOM_SEED)
+    # Ensure deterministic behavior on GPU
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-# Suppress warnings for cleaner output
+# Suppress warnings for cleaner output during training
 warnings.filterwarnings('ignore')
 
-# Check for GPU availability
+# Device configuration
+# Automatically detects and uses GPU if available, otherwise uses CPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 
 class SiameseDataset(Dataset):
-    """Custom Dataset for Siamese Network pairs."""
+    """
+    Custom Dataset class for handling pairs of images for Siamese Network training.
+    Inherits from torch.utils.data.Dataset for PyTorch compatibility.
+    """
 
-    def __init__(self, pairs, labels):
+    def __init__(self, pairs: np.ndarray, labels: np.ndarray):
+        """
+        Initialize the dataset with image pairs and their corresponding labels.
+
+        Args:
+            pairs: numpy array of shape (N, 2, H, W) containing N pairs of images
+            labels: numpy array of shape (N,) containing binary labels
+                   (1 for same person, 0 for different people)
+        """
         self.pairs = pairs
         self.labels = labels
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Get the total number of image pairs in the dataset.
+
+        Returns:
+            int: Number of pairs in the dataset
+        """
         return len(self.labels)
 
-    def __getitem__(self, idx):
-        # Return a pair of images and label
+    def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """
+        Get a single pair of images and their corresponding label.
+
+        Args:
+            idx: Index of the pair to retrieve
+
+        Returns:
+            tuple: Contains:
+                - img1: First image of the pair as FloatTensor
+                - img2: Second image of the pair as FloatTensor
+                - label: Binary label as FloatTensor (1 for same person, 0 for different)
+        """
         img1 = torch.FloatTensor(self.pairs[idx, 0])
         img2 = torch.FloatTensor(self.pairs[idx, 1])
         label = torch.FloatTensor([self.labels[idx]])
@@ -63,25 +98,43 @@ class SiameseDataset(Dataset):
 
 
 class BaseNetwork(nn.Module):
-    """Base convolutional network for feature extraction in Siamese architecture."""
+    """
+    Base convolutional network for feature extraction in Siamese architecture.
 
-    def __init__(self, input_shape):
+    Architecture:
+        - 4 Convolutional layers with increasing filter counts
+        - 3 MaxPooling layers
+        - 1 Dense layer with sigmoid activation
+        - ReLU activations between conv layers
+
+    The network processes input images through a series of convolutional and pooling
+    layers to extract meaningful features, which are then passed through a dense layer
+    to create a fixed-size feature embedding.
+    """
+
+    def __init__(self, input_shape: Tuple[int, int, int]):
+        """
+        Initialize the network architecture.
+
+        Args:
+            input_shape: Tuple of (height, width, channels) for input images
+                        Example: (100, 100, 1) for 100x100 grayscale images
+        """
         super(BaseNetwork, self).__init__()
-
-        # Calculate the size after convolutions and pooling
-        # This is needed to determine the input size for the final dense layer
         self.input_shape = input_shape
 
-        # Layer 1: Conv(64, 10x10) -> ReLU -> MaxPool(2x2)
+        # Layer 1: First convolutional block
+        # Input: (input_shape) -> Output: (NUM_OF_FILTERS_LAYER1 feature maps)
         self.conv1 = nn.Conv2d(
-            in_channels=input_shape[2],  # channels (1 for grayscale)
-            out_channels=NUM_OF_FILTERS_LAYER1,
+            in_channels=input_shape[2],  # Number of input channels (1 for grayscale)
+            out_channels=NUM_OF_FILTERS_LAYER1,  # Number of output feature maps
             kernel_size=KERNAL_SIZE_LAYER1,
-            padding=0
+            padding=0  # No padding used
         )
         self.pool1 = nn.MaxPool2d(kernel_size=POOL_SIZE)
 
-        # Layer 2: Conv(128, 7x7) -> ReLU -> MaxPool(2x2)
+        # Layer 2: Second convolutional block
+        # Increases feature map depth while reducing spatial dimensions
         self.conv2 = nn.Conv2d(
             in_channels=NUM_OF_FILTERS_LAYER1,
             out_channels=NUM_OF_FILTERS_LAYER2,
@@ -90,7 +143,8 @@ class BaseNetwork(nn.Module):
         )
         self.pool2 = nn.MaxPool2d(kernel_size=POOL_SIZE)
 
-        # Layer 3: Conv(128, 4x4) -> ReLU -> MaxPool(2x2)
+        # Layer 3: Third convolutional block
+        # Further feature extraction with maintained feature map depth
         self.conv3 = nn.Conv2d(
             in_channels=NUM_OF_FILTERS_LAYER2,
             out_channels=NUM_OF_FILTERS_LAYER3,
@@ -99,7 +153,8 @@ class BaseNetwork(nn.Module):
         )
         self.pool3 = nn.MaxPool2d(kernel_size=POOL_SIZE)
 
-        # Layer 4: Conv(256, 4x4) -> ReLU (no pooling)
+        # Layer 4: Final convolutional layer
+        # Highest level feature extraction without pooling
         self.conv4 = nn.Conv2d(
             in_channels=NUM_OF_FILTERS_LAYER3,
             out_channels=NUM_OF_FILTERS_LAYER4,
@@ -107,31 +162,39 @@ class BaseNetwork(nn.Module):
             padding=0
         )
 
-        # Calculate the flattened size after all convolutions
+        # Dynamically calculate the size of flattened features
         self._calculate_flatten_size()
 
-        # Dense layer: 4096 units with sigmoid activation
+        # The final dense layer for creating the feature embedding
+        # Output size of 4096 was chosen based on the original architecture
         self.fc = nn.Linear(self.flatten_size, 4096)
 
-        # Initialize weights
+        # Initialize weights using Xavier/Glorot initialization
         self._initialize_weights()
 
     def _calculate_flatten_size(self):
-        """Calculate the size of flattened features after convolutions."""
-        # Create a dummy input to calculate sizes
+        """
+        Calculate the flattened feature size after all convolutions.
+        This is needed to properly size the fully connected layer.
+        Uses a dummy forward pass to compute the dimensions.
+        """
         dummy_input = torch.zeros(1, self.input_shape[2], self.input_shape[0], self.input_shape[1])
 
-        # Pass through convolutional layers
+        # Simulate the forward pass through conv layers
         x = self.pool1(F.relu(self.conv1(dummy_input)))
         x = self.pool2(F.relu(self.conv2(x)))
         x = self.pool3(F.relu(self.conv3(x)))
         x = F.relu(self.conv4(x))
 
-        # Get the flattened size
+        # Calculate flattened size
         self.flatten_size = x.view(1, -1).size(1)
 
     def _initialize_weights(self):
-        """Initialize weights using Glorot uniform (Xavier uniform in PyTorch)."""
+        """
+        Initialize network weights using Xavier/Glorot uniform initialization.
+        This helps achieve better convergence by maintaining appropriate
+        variance of activations across layers.
+        """
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
@@ -141,50 +204,93 @@ class BaseNetwork(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
-        """Forward pass through the network."""
-        # Convolutional layers with ReLU and pooling
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the network.
+
+        Args:
+            x: Input tensor of shape (batch_size, channels, height, width)
+
+        Returns:
+            torch.Tensor: Feature embedding of shape (batch_size, 4096)
+        """
+        # Sequential application of conv layers with ReLU activation and pooling
         x = self.pool1(F.relu(self.conv1(x)))
         x = self.pool2(F.relu(self.conv2(x)))
         x = self.pool3(F.relu(self.conv3(x)))
         x = F.relu(self.conv4(x))
 
-        # Flatten
+        # Flatten the feature maps
         x = x.view(x.size(0), -1)
 
-        # Dense layer with sigmoid activation
+        # Final dense layer with sigmoid activation for feature embedding
         x = torch.sigmoid(self.fc(x))
 
         return x
 
 
 class SiameseNetwork(nn.Module):
-    """Complete Siamese Network architecture."""
+    """
+    Complete Siamese Network architecture for face similarity comparison.
 
-    def __init__(self, input_shape):
+    The network consists of:
+    1. A shared base network that processes both input images
+    2. L1 distance calculation between the embeddings
+    3. Final prediction layer that outputs similarity score
+
+    The network learns to map face images to a feature space where similar
+    faces are close together and different faces are far apart.
+    """
+
+    def __init__(self, input_shape: Tuple[int, int, int]):
+        """
+        Initialize the Siamese Network.
+
+        Args:
+            input_shape: Tuple of (height, width, channels) for input images
+                        Example: (100, 100, 1) for 100x100 grayscale images
+        """
         super(SiameseNetwork, self).__init__()
 
-        # Create the shared base network
+        # Shared base network for feature extraction
+        # Both images will be processed through this same network
         self.base_network = BaseNetwork(input_shape)
 
-        # Final prediction layer
+        # Final prediction layer that takes L1 distance and outputs similarity score
+        # Input size is 4096 (size of feature embedding from base network)
+        # Output size is 1 (single similarity score)
         self.prediction = nn.Linear(4096, 1)
 
-        # Initialize the prediction layer
+        # Initialize prediction layer weights using Xavier/Glorot uniform
+        # Bias initialized to 0.5 to start with balanced predictions
         nn.init.xavier_uniform_(self.prediction.weight)
         nn.init.constant_(self.prediction.bias, 0.5)
 
-    def forward(self, input1, input2):
-        """Forward pass for the Siamese network."""
-        # Process both inputs through the same network (shared weights)
-        output1 = self.base_network(input1)
-        output2 = self.base_network(input2)
+    def forward(self, input1: torch.Tensor, input2: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass computing similarity between two input images.
 
-        # L1 distance between embeddings
-        l1_distance = torch.abs(output1 - output2)
+        Args:
+            input1: First input image tensor of shape (batch_size, channels, height, width)
+            input2: Second input image tensor of shape (batch_size, channels, height, width)
 
-        # Final prediction with sigmoid
-        prediction = torch.sigmoid(self.prediction(l1_distance))
+        Returns:
+            torch.Tensor: Similarity scores between 0 and 1 for each pair in the batch
+                         Shape: (batch_size, 1)
+                         - Scores close to 1 indicate similar faces
+                         - Scores close to 0 indicate different faces
+        """
+        # Generate embeddings for both images using a shared base network
+        output1 = self.base_network(input1)  # Shape: (batch_size, 4096)
+        output2 = self.base_network(input2)  # Shape: (batch_size, 4096)
+
+        # Compute L1 distance between embeddings
+        # This measures how different the embeddings are
+        l1_distance = torch.abs(output1 - output2)  # Shape: (batch_size, 4096)
+
+        # Final prediction with sigmoid activation
+        # Maps the distance to a similarity score between 0 and 1
+        prediction = torch.sigmoid(self.prediction(l1_distance))  # Shape: (batch_size, 1)
 
         return prediction
 
@@ -204,7 +310,7 @@ class SiameseFaceRecognition:
     making it suitable for recognizing faces with limited training examples per person.
     """
 
-    def __init__(self, input_shape):
+    def __init__(self, input_shape: tuple[int, int, int]):
         """
         Initialize the Siamese Network.
 
@@ -698,11 +804,12 @@ class SiameseFaceRecognition:
         if self.model is None:
             self.create_siamese_network()
 
+        # Log model creation success and parameter count
         print(f"\n✓ Model created successfully!")
         total_params = sum(p.numel() for p in self.model.parameters())
         print(f"  Total parameters: {total_params:,}")
 
-        # Check if we have preloaded pairs
+        # Verify data availability for training
         use_preloaded_pairs = hasattr(self, 'train_pairs') and self.train_pairs is not None
 
         if use_preloaded_pairs:
@@ -710,89 +817,91 @@ class SiameseFaceRecognition:
             print(f"  Training pairs: {len(self.train_pairs):,}")
             print(f"  Validation pairs: {len(self.val_pairs):,}")
         else:
-            raise f"\nThere is a problem with self.train_pairs"
+            raise Exception(f"\nThere is a problem with self.train_pairs")
 
-        # Step 2: Check - overfit a single batch
+        # === STEP 1: Validation of Model Architecture ===
+        # Test model's ability to overfit a single batch
         print("\n" + "-" * 50)
         print("Step 1: Overfitting a single batch to verify model works...")
         print("-" * 50)
 
-        # Prepare a small batch for check
-        small_pairs = self.train_pairs[:32]
-        small_labels = self.train_pair_labels[:32]
+        # Extract a small subset for validation
+        small_pairs = self.train_pairs[:BATCH_SIZE]
+        small_labels = self.train_pair_labels[:BATCH_SIZE]
 
-        # Convert to PyTorch tensors
+        # Create a data loader for the small validation batch
         small_dataset = SiameseDataset(small_pairs, small_labels)
-        small_loader = DataLoader(small_dataset, batch_size=32, shuffle=False)
+        small_loader = DataLoader(small_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-        # Train on single batch
+        # Train on a single batch multiple times to verify learning
         print("Batch | Loss    | Accuracy | Status")
         print("-" * 40)
 
-        self.model.train()
-        for i in range(10):
+        self.model.train()  # Set the model to training mode
+        for i in range(10):  # Try to overfit for 10 iterations
             for img1, img2, labels in small_loader:
+                # Move data to appropriate device (CPU/GPU)
                 img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
-                # Add channel dimension if needed
+                # Handle single-channel images by adding channel dimension
                 if len(img1.shape) == 3:
                     img1 = img1.unsqueeze(1)
                     img2 = img2.unsqueeze(1)
 
-                # Forward pass
-                self.optimizer.zero_grad()
-                outputs = self.model(img1, img2)
-                loss = self.criterion(outputs, labels)
+                # Training step
+                self.optimizer.zero_grad()  # Clear previous gradients
+                outputs = self.model(img1, img2)  # Forward pass
+                loss = self.criterion(outputs, labels)  # Calculate loss
+                loss.backward()  # Backpropagate
+                self.optimizer.step()  # Update weights
 
-                # Backward pass
-                loss.backward()
-                self.optimizer.step()
-
-                # Calculate accuracy
-                predictions = (outputs > 0.5).float()
+                # Calculate accuracy for monitoring
+                predictions = (outputs > 0.5).float()  # Binary classification threshold
                 acc = (predictions == labels).float().mean().item()
 
+                # Display progress with a visual status indicator
                 status = "Good" if acc > 0.7 else "→ Learning"
                 print(f"{i + 1:>5} | {loss.item():>7.4f} | {acc:>8.4f} | {status}")
 
+        # Check if model successfully overfits small batch
         if acc < 0.9:
             print("\nWarning: Model may not be learning properly on small batch")
         else:
             print("\nModel successfully overfits small batch - architecture is working!")
 
-        # Step 3: Train on full dataset
+        # === STEP 2: Full Dataset Training ===
         print("\n" + "-" * 50)
         print("Step 2: Training on full dataset...")
         print("-" * 50)
 
-        # Initialize training history
+        # Initialize dictionary to track training metrics
         history = {
-            'loss': [],
-            'accuracy': [],
-            'val_loss': [],
-            'val_accuracy': []
+            'loss': [],  # Training loss per epoch
+            'accuracy': [],  # Training accuracy per epoch
+            'val_loss': [],  # Validation loss per epoch
+            'val_accuracy': []  # Validation accuracy per epoch
         }
 
-        # Early stopping parameters
-        best_val_loss = float('inf')
-        patience_counter = 0
-        patience = 5
-        best_model_state = None
+        # Set up early stopping parameters
+        best_val_loss = float('inf')  # Track the best validation loss
+        patience_counter = 0  # Count epochs without improvement
+        patience = 5  # Maximum epochs to wait for improvement
+        best_model_state = None  # Store best model weights
 
-        # Training loop
+        # === Main Training Loop ===
         print("\nEpoch | Train Loss | Train Acc | Val Loss | Val Acc | Status")
         print("-" * 70)
 
         for epoch in range(epochs):
 
-            # Prepare data loaders
+            # Shuffle training data for each epoch
             indices = np.random.permutation(len(self.train_pairs))  # Shuffle indices
             train_pairs = self.train_pairs[indices]
             train_pair_labels = self.train_pair_labels[indices]
             val_pairs = self.val_pairs
             val_pair_labels = self.val_pair_labels
 
-            # Create data loaders
+            # Prepare data loaders for this epoch
             train_dataset = SiameseDataset(train_pairs, train_pair_labels)
             val_dataset = SiameseDataset(val_pairs, val_pair_labels)
 
@@ -851,7 +960,8 @@ class SiameseFaceRecognition:
                     loss = self.criterion(outputs, labels)
 
                     val_loss += loss.item()
-                    predictions = (outputs > 0.5).float()
+                    predictions = torch.tensor(predictions).view(-1)
+                    labels = torch.tensor(labels).view(-1)
                     val_acc += (predictions == labels).float().mean().item()
                     val_batches += 1
 
@@ -918,54 +1028,77 @@ class SiameseFaceRecognition:
 
         return history
 
-    def evaluate_verification(self) -> Tuple[float, np.ndarray, np.ndarray, np.ndarray]:
+    def evaluate_verification(self) -> tuple[
+        floating[Any], ndarray[Any, dtype[_SCT]], ndarray[Any, dtype[_SCT]], ndarray | None]:
         """
-        Evaluate the model on verification task (same/different person).
+        Evaluate the model on a verification task (same/different person).
         """
+        # Print evaluation header
         print("\n" + "=" * 50)
         print("Evaluating Verification Performance")
         print("=" * 50)
 
-        # Use test pairs
+        # Create DataLoader for a test set with fixed batch size
+        # No shuffling to maintain pair order for analysis
         test_dataset = SiameseDataset(self.test_pairs, self.test_pair_labels)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
+        # Set model to evaluation mode (affects dropout, batch norm, etc.)
         self.model.eval()
-        all_predictions = []
-        all_labels = []
 
+        # Initialize lists to store batch results
+        all_predictions = []  # Store model predictions
+        all_labels = []  # Store ground truth labels
+
+        # Disable gradient computation for efficiency during inference
         with torch.no_grad():
+
+            # Process each batch of image pairs
             for img1, img2, labels in test_loader:
+                # Move data to appropriate device (CPU/GPU)
                 img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
-                # Add channel dimension if needed
-                if len(img1.shape) == 3:
+                # Handle grayscale images by adding channel dimension if needed
+                # Shape should be [batch_size, channels, height, width]
+                if len(img1.shape) == 3:  # If missing channel dimension
                     img1 = img1.unsqueeze(1)
                     img2 = img2.unsqueeze(1)
 
+                # Get model predictions for this batch
                 outputs = self.model(img1, img2)
+
+                # Convert predictions and labels to numpy arrays
+                # Move to CPU first if they were on GPU
                 all_predictions.extend(outputs.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
-        # Convert to numpy arrays
-        predictions = np.array(all_predictions)
-        test_labels = np.array(all_labels).flatten()
+        # Convert lists to numpy arrays for efficient computation
+        predictions = np.array(all_predictions)  # Raw prediction scores
+        test_labels = np.array(all_labels).flatten()  # Ground truth labels
 
-        # Calculate metrics
+        # Convert raw predictions to binary decisions
+        # Using 0.5 as a threshold for binary classification
         pred_labels = (predictions > 0.5).astype(int).flatten()
+
+        # Calculate overall accuracy across all pairs
         accuracy = np.mean(pred_labels == test_labels)
 
-        # Per-class metrics
-        positive_mask = test_labels == 1
-        negative_mask = test_labels == 0
+        # Calculate separate metrics for same-person and different-person pairs
+        positive_mask = test_labels == 1  # Mask for same-person pairs
+        negative_mask = test_labels == 0  # Mask for different-person pairs
 
+        # True Positive Rate (sensitivity): accuracy on same-person pairs
         tpr = np.mean(pred_labels[positive_mask] == 1) if np.any(positive_mask) else 0
+
+        # True Negative Rate (specificity): accuracy on different-person pairs
         tnr = np.mean(pred_labels[negative_mask] == 0) if np.any(negative_mask) else 0
 
+        # Print performance metrics
         print(f"Overall Accuracy: {accuracy:.4f}")
         print(f"True Positive Rate: {tpr:.4f}")
         print(f"True Negative Rate: {tnr:.4f}")
 
+        # Return all relevant data for further analysis if needed
         return accuracy, predictions, test_labels, self.test_pairs
 
     def run_complete_experiment(self) -> None:
