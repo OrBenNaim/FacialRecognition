@@ -1,8 +1,3 @@
-import torch
-
-# Add this with other constants
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 #================== Paths to CSV files ======================
 DATA_PATH = './DATA/LFW-a'  # Path to LFW-a dataset
 TRAIN_FILE = './DATA/pairsDevTrain.txt'  # Path to train.txt
@@ -11,7 +6,7 @@ TEST_FILE = './DATA/pairsDevTest.txt'  # Path to test.txt
 
 # Each image was a gray scale image with size of 250x250
 # Optimized image size is 128x128 pixels
-OPTIMIZED_IMG_SHAPE= (128, 128, 1)
+OPTIMIZED_IMG_SHAPE = (128, 128, 1)
 
 # The relative size of the validation set
 VALIDATION_SPLIT = 0.2
@@ -24,6 +19,9 @@ EPOCHS = 20
 
 # Number of image pairs processed together before updating weights
 BATCH_SIZE = 32
+
+# Learning Rate
+LEARNING_RATE = 0.00006
 
 # Number of filters for each layer of Base Network (CNN)
 NUM_OF_FILTERS_LAYER1 = 64      # Enough to capture basic face features
