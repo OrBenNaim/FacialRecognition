@@ -1,4 +1,4 @@
-from src.constants import OPTIMIZED_IMG_SHAPE, DATA_PATH, TRAIN_FILE, TEST_FILE, VALIDATION_SPLIT
+from src.constants import OPTIMIZED_IMG_SHAPE, DATA_FOLDER_PATH, TRAIN_FILE_PATH, TEST_FILE_PATH, VALIDATION_SPLIT
 from src.face_recognition_model import SiameseFaceRecognition
 
 if __name__ == '__main__':
@@ -8,11 +8,10 @@ if __name__ == '__main__':
     siamese_model = SiameseFaceRecognition(input_shape=OPTIMIZED_IMG_SHAPE)
 
     # Load and prepare dataset
-    siamese_model.load_lfw_dataset(DATA_PATH, TRAIN_FILE,
-                                   TEST_FILE, VALIDATION_SPLIT)
+    siamese_model.load_lfw_dataset(DATA_FOLDER_PATH, TRAIN_FILE_PATH, VALIDATION_SPLIT)
 
     # Analyze dataset first
-    siamese_model.analyze_dataset_distribution()
+    siamese_model.analyze_train_val_dataset_distribution()
 
     # Run the complete experiment
-    siamese_model.run_complete_experiment()
+    #siamese_model.run_complete_experiment()
