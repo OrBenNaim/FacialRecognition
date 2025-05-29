@@ -30,7 +30,8 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     LEARNING_RATE, SMALL_BATCH_SUCCESS_THRESHOLD, SMALL_BATCH_TEST_ITERATIONS,
-    EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD  # Learning rate for optimization
+    EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD, TRAIN_FILE_PATH,
+    TEST_FILE_PATH, SAVE_IMG_DIR_PATH  # Learning rate for optimization
 )
 from src.utils import plot_distribution_charts  # Visualization utilities
 
@@ -344,7 +345,6 @@ class SiameseFaceRecognition:
         # Initialize data storage for a test set
         self.test_person_images: Optional[Dict[str, List[str]]] = None
         self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
-        self.test_dist = None
 
         # Initialize arrays for training data
         self.train_images: Optional[np.ndarray] = None
@@ -370,7 +370,7 @@ class SiameseFaceRecognition:
         print(f"Siamese Face Recognition initialized with input shape: {input_shape}")
 
     # Load training and test datasets
-    def load_lfw_dataset(self, data_path: str, train_file: str, test_file: str, validation_split: float) -> None:
+    def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float) -> None:
         """
         Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
 
@@ -383,12 +383,10 @@ class SiameseFaceRecognition:
 
         Parameters
         ----------
-        data_path : str
+        data_path_folder : str
             Root directory path containing LFW person subdirectories
-        train_file : str
-            Path to the training pairs file (e.g., pairsDevTrain.txt)
-        test_file : str
-            Path to the test pairs file (e.g., pairsDevTest.txt)
+        dataset_file_path : str
+            Path to the dataset pairs file (e.g., pairsDevTrain.txt)
         validation_split : float
             Fraction of training data to use for validation (0.0 to 1.0)
 
@@ -409,12 +407,12 @@ class SiameseFaceRecognition:
         """
         # === Input Validation ===
         # Ensure all required files and directories exist
-        if not os.path.exists(data_path):
-            raise FileNotFoundError(f"Data path not found: {data_path}")
-        if not os.path.exists(train_file):
-            raise FileNotFoundError(f"Train file not found: {train_file}")
-        if not os.path.exists(test_file):
-            raise FileNotFoundError(f"Test file not found: {test_file}")
+        if not os.path.exists(data_path_folder):
+            raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
+
+        if not os.path.exists(dataset_file_path):
+            raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
+
         if not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
@@ -481,7 +479,7 @@ class SiameseFaceRecognition:
                                     img = img.resize((self.input_shape[0], self.input_shape[1]))
                                     img_array = np.array(img) / 255.0
 
-                                    # Store preprocessed image and update person's image list
+                                    # Store preprocessed image and update a person's image list
                                     image_dict[current_img_key] = img_array
                                     person_images[person_name].append(current_img_key)
                                 else:
@@ -589,96 +587,85 @@ class SiameseFaceRecognition:
             # Convert lists to numpy arrays for model training
             return np.array(pairs), np.array(labels)
 
-        # === Step 1: Load Training Dataset ===
-        print("Loading training images...")
-        # Load all unique images from a training file and create mappings
-        self.train_val_image_dict, self.train_val_person_images = load_all_images(train_file, data_path)
+        # === Step 1: Load Dataset ===
+        print("Loading images...")
 
-        # === Step 2: Load Test Dataset ===
-        print("\nLoading test images...")
-        # Load all unique images from a test file and create mappings
-        self.test_image_dict, self.test_person_images = load_all_images(test_file, data_path)
+        # Load all unique images from a dataset file and create mappings
+        temp_image_dict, temp_person_images = load_all_images(dataset_file_path, data_path_folder)
 
-        # === Step 3: Check Dataset Separation ===
-        # Identify any overlap between training and test sets (should be minimal)
-        common_people = set(self.train_val_person_images.keys()) & set(self.test_person_images.keys())
-        print(f"\nCommon people in train_val and test sets: {len(common_people)}")
+        # === Step 3: Create Image Pairs ===
+        print("\nCreating pairs...")
 
-        # === Step 4: Create Image Pairs ===
-        print("\nCreating training + validation pairs...")
+        # Create positive and negative pairs from the dataset
+        temp_pairs, temp_labels = load_pairs(dataset_file_path, temp_image_dict)
 
-        # Create positive and negative pairs from training data
-        train_val_pairs, train_val_labels = load_pairs(train_file, self.train_val_image_dict)
-
-        print("\nCreating test pairs...")
-
-        # Create positive and negative pairs from test data
-        test_pairs, test_labels = load_pairs(test_file, self.test_image_dict)
-
-        # === Step 5: Split Training Data ===
-        print(f"\nSplitting training + validation data (validation split: {validation_split})...")
-        train_pairs, val_pairs, train_labels, val_labels = train_test_split(
-            train_val_pairs, train_val_labels, test_size=validation_split,
-            random_state=RANDOM_SEED, stratify=train_val_labels
-        )
-
-        # === Step 6: Prepare Individual Images for One-shot Learning ===
-        # Extract all unique training images and their labels
-        train_images = []
-        train_image_labels = []
-        for person, img_keys in self.train_val_person_images.items():
+        # === Step 4: Prepare Individual Images for One-shot Learning ===
+        # Extract all unique dataset images and their labels
+        temp_images = []
+        temp_image_labels = []
+        for person, img_keys in temp_person_images.items():
             for img_key in img_keys:
-                if img_key in self.train_val_image_dict:
-                    train_images.append(self.train_val_image_dict[img_key])
-                    train_image_labels.append(person)
+                if img_key in temp_image_dict:
+                    temp_images.append(temp_image_dict[img_key])
+                    temp_image_labels.append(person)
 
-        # Extract all unique test images and their labels
-        test_images = []
-        test_image_labels = []
-        for person, img_keys in self.test_person_images.items():
-            for img_key in img_keys:
-                if img_key in self.test_image_dict:
-                    test_images.append(self.test_image_dict[img_key])
-                    test_image_labels.append(person)
+        # === Step 5: Convert Lists to Arrays and Store Data ===
+        temp_images = np.array(temp_images)
 
-        # === Step 7: Convert Lists to Arrays and Store Data ===
-        # Convert image lists to numpy arrays
-        self.train_images = np.array(train_images)
-        self.test_images = np.array(test_images)
+        if dataset_file_path == TRAIN_FILE_PATH:
 
-        # Store paired data for model training
-        self.train_pairs = train_pairs
-        self.train_pair_labels = train_labels
-        self.val_pairs = val_pairs
-        self.val_pair_labels = val_labels
-        self.test_pairs = test_pairs
-        self.test_pair_labels = test_labels
+            # === Step 6: Split Training Data ===
+            print(f"\nSplitting training + validation data (validation split: {validation_split})...")
 
-        # === Step 8: Final Data Processing ===
-        # Add channel dimension for grayscale images if needed
-        if len(self.train_images.shape) == 3:  # If images don't have channel dimension
-            self.train_images = self.train_images[..., np.newaxis]
-            self.test_images = self.test_images[..., np.newaxis]
+            train_pairs, val_pairs, train_labels, val_labels = train_test_split(
+                temp_pairs, temp_labels, test_size=validation_split,
+                random_state=RANDOM_SEED, stratify=temp_labels
+            )
 
-        # Create sequential labels for individual images (for compatibility)
-        self.train_labels = np.arange(len(self.train_images))
-        self.test_labels = np.arange(len(self.test_images))
+            print(f"\n\n{temp_person_images.values()}\n\n")
 
-        # Store the validation split of individual images
-        val_size = int(len(self.train_images) * validation_split)
-        self.val_images = self.train_images[:val_size]
-        self.val_labels = self.train_labels[:val_size]
+            # Store paired data for model training
+            self.train_pairs = train_pairs
+            self.train_pair_labels = train_labels
+            self.val_pairs = val_pairs
+            self.val_pair_labels = val_labels
 
-    def analyze_dataset_distribution(self) -> None:
+            # Add channel dimension for grayscale images if needed
+            if len(temp_images.shape) == 3:  # If images don't have channel dimension
+                self.train_images = temp_images[..., np.newaxis]
+
+            # Create sequential labels for individual images (for compatibility)
+            self.train_labels = np.arange(len(temp_images))
+
+            # Store the validation split of individual images
+            val_size = int(len(self.train_images) * validation_split)
+            self.val_images = self.train_images[:val_size]
+            self.val_labels = self.train_labels[:val_size]
+
+        elif dataset_file_path == TEST_FILE_PATH:
+            # Store paired data for model training
+            self.test_pairs = temp_pairs
+            self.test_pair_labels = temp_labels
+
+            # Add channel dimension for grayscale images if needed
+            if len(temp_images.shape) == 3:  # If images don't have channel dimension
+                self.test_images = temp_images[..., np.newaxis]
+
+            self.test_labels = np.arange(len(temp_images))
+
+        else:
+            raise ValueError(f"Invalid dataset file path: {dataset_file_path}")
+
+    def analyze_train_val_dataset_distribution(self) -> None:
         """
         Perform comprehensive analysis of dataset statistics and distributions.
 
         This method calculates and stores various dataset metrics including
-        - Total number of pairs in train/val/test sets
+        - Total number of pairs in train/val sets
         - Distribution of positive/negative pairs
         - Number of unique individuals
         - Images per person statistics
-        - Train/test set overlap analysis
+        - Train/Val set overlap analysis
 
         The analysis results are stored in the self.stats dictionary and printed
         to provide insights into dataset characteristics for experimental design.
@@ -692,7 +679,6 @@ class SiameseFaceRecognition:
         print("\n=== Detailed Dataset Analysis ===")
 
         self.train_val_dist = [len(images) for images in self.train_val_person_images.values()]
-        self.test_dist = [len(images) for images in self.test_person_images.values()]
 
         # Calculate and store comprehensive statistics
         self.stats = {
@@ -721,25 +707,6 @@ class SiameseFaceRecognition:
             'train_val_dist_median': round(np.median(self.train_val_dist), 3),
             'train_val_dist_std': round(np.std(self.train_val_dist), 3),
 
-            'total_test_pairs': len(self.test_pairs),
-
-            'positive_test_pairs': np.sum(self.test_pair_labels == 1),
-            'negative_test_pairs': np.sum(self.test_pair_labels == 0),
-
-            'unique_test_people': len(self.test_person_images),
-            'unique_test_images': len(self.test_image_dict),
-
-            'min_test_images_per_person': min(self.test_dist),
-            'max_test_images_per_person': max(self.test_dist),
-
-            'average_test_images_per_person': round(len(self.test_images) / len(self.test_person_images), 3),
-
-            'test_dist_mean': round(np.mean(self.test_dist), 3),
-            'test_dist_median': round(np.median(self.test_dist), 3),
-            'test_dist_std': round(np.std(self.test_dist), 3),
-
-            'test_images_per_person_distribution': dict(
-                Counter(self.test_dist)),
         }
 
         for key, val in self.stats.items():
@@ -747,7 +714,7 @@ class SiameseFaceRecognition:
 
         print("=" * 50)
 
-        plot_distribution_charts(Counter(self.train_val_dist), Counter(self.test_dist))
+        plot_distribution_charts(Counter(self.train_val_dist))
 
     def create_siamese_network(self) -> SiameseNetwork:
         """
