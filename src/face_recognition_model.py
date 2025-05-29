@@ -613,6 +613,8 @@ class SiameseFaceRecognition:
         temp_images = np.array(temp_images)
 
         if dataset_file_path == TRAIN_FILE_PATH:
+            self.train_val_person_images = temp_person_images
+            self.train_val_image_dict = temp_image_dict
 
             # === Step 6: Split Training Data ===
             print(f"\nSplitting training + validation data (validation split: {validation_split})...")
@@ -621,8 +623,6 @@ class SiameseFaceRecognition:
                 temp_pairs, temp_labels, test_size=validation_split,
                 random_state=RANDOM_SEED, stratify=temp_labels
             )
-
-            print(f"\n\n{temp_person_images.values()}\n\n")
 
             # Store paired data for model training
             self.train_pairs = train_pairs
@@ -643,6 +643,9 @@ class SiameseFaceRecognition:
             self.val_labels = self.train_labels[:val_size]
 
         elif dataset_file_path == TEST_FILE_PATH:
+            self.test_person_images = temp_person_images
+            self.train_val_image_dict = temp_image_dict
+
             # Store paired data for model training
             self.test_pairs = temp_pairs
             self.test_pair_labels = temp_labels
@@ -1132,7 +1135,6 @@ class SiameseFaceRecognition:
             'dataset': {
                 'train_pairs': len(self.train_pairs),
                 'val_pairs': len(self.val_pairs),
-                'test_pairs': len(self.test_pairs),
             }
         }
 
@@ -1169,7 +1171,7 @@ class SiameseFaceRecognition:
                 # Move data to appropriate device (CPU/GPU)
                 img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
-                # Handle grayscale images by adding channel dimension if needed
+                # Handle grayscale images by adding channel dimension if it's necessary
                 # Shape should be [batch_size, channels, height, width]
                 if len(img1.shape) == 3:  # If missing channel dimension
                     img1 = img1.unsqueeze(1)
