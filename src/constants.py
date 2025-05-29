@@ -1,7 +1,8 @@
 #================== Paths to CSV files ======================
-DATA_PATH = './DATA/LFW-a'  # Path to LFW-a dataset
-TRAIN_FILE = './DATA/pairsDevTrain.txt'  # Path to train.txt
-TEST_FILE = './DATA/pairsDevTest.txt'  # Path to test.txt
+DATA_FOLDER_PATH = './DATA/LFW-a'  # Path to LFW-a dataset
+TRAIN_FILE_PATH = './DATA/pairsDevTrain.txt'  # Path to train.txt
+TEST_FILE_PATH = './DATA/pairsDevTest.txt'  # Path to test.txt
+SAVE_IMG_DIR_PATH = './src/images'  # Path to save images directory
 #============================================================
 
 # Image and Data Configuration
