@@ -14,4 +14,4 @@ if __name__ == '__main__':
     siamese_model.analyze_train_val_dataset_distribution()
 
     # Run the complete experiment
-    #siamese_model.run_complete_experiment()
+    siamese_model.run_complete_experiment()
