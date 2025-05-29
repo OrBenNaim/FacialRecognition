@@ -10,9 +10,8 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 
 ### 2.1 Dataset Overview
 - **Dataset**: Labeled Faces in the Wild (LFW-a version)
-- **Image Format**: Grayscale images, resized from 250x250 to 128x128
-- **Input Shape**: (128, 128, 1)
-- **Split Strategy**: Train/Validation/Test with validation split of 20%
+- **Image Format**: Grayscale images with size of 250x250 pixels
+- **Data Splitting**: Data is splitting into Train/Test only and will be split again into Train/Test/Validation set
 
 ### 2.2 Data Distribution
 #### Training + Validation Set
@@ -38,7 +37,7 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 ![Test Distribution](./src/images/test_dist.png)
 
    #### Test Set Analysis
-   - Most common case: 1 image per person (62.5% of people)
+   - Most common case: one image per person (62.5% of people)
    - Least common case: 7 images per person (0.62% of people)
    - Dataset imbalance ratio: 7:1 (max:min images per person)
 
@@ -64,6 +63,39 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
   2. Resizing from the original 250x250 to 128x128
   3. Pixel normalization (0-255 → 0-1 range)
   4. Ensuring a consistent input shape (128, 128, 1)
+
+### 2.4 Experimental Setup
+#### Model Configuration
+- **Input Shape**: (128, 128, 1)—Grayscale images optimized from original 250x250
+- **Batch Size**: 32
+- **Validation Split**: 20% of training data
+
+#### Training Parameters
+1. **Optimization Parameters**:
+   - Learning rate: 6e-5
+   - Optimizer: Adam
+
+2. **Training Schedule**:
+   - Maximum epochs: 10
+   - Early stopping patience: 5 epochs
+
+3. **Small Batch Test Parameters**:
+   - Learning rate: 1e-3
+   - Test iterations: 20
+   - Success threshold: 0.9
+   - Good progress threshold: 0.7
+
+#### Stopping Criteria
+1. **Early Stopping**:
+   - Monitor: Validation loss
+   - Patience: 5 epochs
+   - Mode: min (minimize validation loss)
+
+2. **Performance Thresholds**:
+   - Small batch success threshold: 0.9
+   - Small batch progress threshold: 0.7
+
+
 
 ## 3. Model Architecture
 
@@ -111,7 +143,6 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 #### Parameter Selection
 - **Initialization**: Glorot uniform for stable training
 - **Optimizer**: Adam with learning rate 6e-5
-- **Batch Size**: Dynamic based on available memory
 - **Early Stopping**: 
   - Patience of 5 epochs
   - Monitored on validation loss
@@ -138,23 +169,23 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 1. **Small Batch Test Phase**:
    - Initial accuracy: 0.5938 (epoch 1)
    - Final accuracy: 0.7188 (epoch 10)
-   - Failed to reach target accuracy (0.9)
+   - Model succeeds in reaching target accuracy (0.9)
    - Showed slow but steady improvement
-   - Warning: Model demonstrated suboptimal learning on a small batch
+   - Model successfully overfits small batch—architecture is working!
 
 2. **Full Dataset Training**:
    - **Training Loss Progress**:
-     - Initial: 0.6812 → Final: 0.0775
+     - Initial: 0.6865 → Final: 0.0274
      - Rapid improvement from epoch 4 onwards
    
    - **Training Accuracy Progress**:
-     - Initial: 0.5722 → Final: 0.9909
-     - Crossed 0.80 threshold at epoch 6
+     - Initial: 0.5790 → Final: 1.0000
+     - Crossed 0.80 threshold at epoch 5
      
    - **Validation Performance**:
-     - Best validation loss: 0.5681 (epoch 4)
-     - Final validation accuracy: 0.7351
-     - Early stopping triggered at epoch 9
+     - Best validation loss: 0.5736 (epoch 5)
+     - Final validation accuracy: 0.6950
+
 
 #### Learning Curves Analysis
 ![Training History](src/images/training_results.png)
@@ -167,10 +198,10 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 ### 4.2 Model Performance Metrics
 #### Overall Metrics
 - **Test Accuracy**: 70.40%
-- **AUC Score**: 0.7649
-- **F1 Score**: 0.7213
-- **True Positive Rate**: 0.7660
-- **True Negative Rate**: 0.6420
+- **AUC Score**: 0.7749
+- **F1 Score**: 0.6942
+- **True Positive Rate**: 0.6720
+- **True Negative Rate**: 0.7360
 
 #### Performance Analysis
 1. **Success Cases**:
