@@ -2,7 +2,7 @@
 DATA_FOLDER_PATH = './DATA/LFW-a'  # Path to LFW-a dataset
 TRAIN_FILE_PATH = './DATA/pairsDevTrain.txt'  # Path to train.txt
 TEST_FILE_PATH = './DATA/pairsDevTest.txt'  # Path to test.txt
-SAVE_IMG_DIR_PATH = './src/images'  # Path to save images directory
+SAVE_IMG_DIR_PATH = './images'  # Path to save images directory
 #============================================================
 
 # Image and Data Configuration
@@ -27,7 +27,6 @@ POOL_SIZE = (2, 2)
 L2_CONV_REG = 2e-4             # L2 regularization for conv layers
 L2_DENSE_REG = 1e-3            # L2 regularization for dense layer
 
-
 #================== Training Configuration =================
 # General Training Parameters
 EPOCHS = 10
@@ -40,4 +39,5 @@ SMALL_BATCH_TEST_LEARNING_RATE = 1e-3
 SMALL_BATCH_TEST_ITERATIONS = 20
 SMALL_BATCH_SUCCESS_THRESHOLD = 0.9
 SMALL_BATCH_GOOD_PROGRESS_THRESHOLD = 0.7
+
 #================== Data Augmentation ====================
