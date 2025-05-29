@@ -25,7 +25,7 @@ POOL_SIZE = (2, 2)
 # Regularization Constants
 L2_CONV_REG = 2e-4             # L2 regularization for conv layers
 L2_DENSE_REG = 1e-3            # L2 regularization for dense layer
-DROPOUT_RATE = 0.3             # Dropout rate for regularization
+
 
 #================== Training Configuration =================
 # General Training Parameters
@@ -33,26 +33,10 @@ EPOCHS = 10
 BATCH_SIZE = 32
 LEARNING_RATE = 6e-5
 EARLY_STOPPING_PATIENCE = 5
-GRADIENT_CLIP_MAX_NORM = 1.0
-EPSILON = 1e-8                 # Numerical stability
 
 # Small Batch Test Parameters
 SMALL_BATCH_TEST_LEARNING_RATE = 1e-3
 SMALL_BATCH_TEST_ITERATIONS = 20
-SMALL_BATCH_TEST_WEIGHT = 2.0
 SMALL_BATCH_SUCCESS_THRESHOLD = 0.9
 SMALL_BATCH_GOOD_PROGRESS_THRESHOLD = 0.7
-
-# Learning Rate Schedule
-LR_SCHEDULE_REDUCTION_FACTOR = 0.5
-LR_SCHEDULE_PATIENCE = 3
-LR_SCHEDULE_MIN = 1e-7
-
 #================== Data Augmentation ====================
-# Augmentation Parameters
-AUGMENTATION_ROTATION_RANGE = 20
-AUGMENTATION_ZOOM_RANGE = 0.15
-AUGMENTATION_WIDTH_SHIFT = 0.2
-AUGMENTATION_HEIGHT_SHIFT = 0.2
-AUGMENTATION_BRIGHTNESS_MIN = 0.85
-AUGMENTATION_BRIGHTNESS_MAX = 1.15
