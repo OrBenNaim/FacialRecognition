@@ -29,7 +29,8 @@ from src.constants import (
     KERNAL_SIZE_LAYER1, KERNAL_SIZE_LAYER2,  # Kernel sizes for conv layers
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
-    LEARNING_RATE  # Learning rate for optimization
+    LEARNING_RATE, SMALL_BATCH_SUCCESS_THRESHOLD, SMALL_BATCH_TEST_ITERATIONS,
+    EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD  # Learning rate for optimization
 )
 from src.utils import plot_distribution_charts  # Visualization utilities
 
@@ -838,8 +839,9 @@ class SiameseFaceRecognition:
         print("-" * 40)
 
         self.model.train()  # Set the model to training mode
-        for i in range(10):  # Try to overfit for 10 iterations
+        for i in range(SMALL_BATCH_TEST_ITERATIONS):  # Try to overfit for 20 iterations
             for img1, img2, labels in small_loader:
+
                 # Move data to appropriate device (CPU/GPU)
                 img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
@@ -860,11 +862,11 @@ class SiameseFaceRecognition:
                 acc = (predictions == labels).float().mean().item()
 
                 # Display progress with a visual status indicator
-                status = "Good" if acc > 0.7 else "→ Learning"
+                status = "Good" if acc > SMALL_BATCH_GOOD_PROGRESS_THRESHOLD else "→ Learning"
                 print(f"{i + 1:>5} | {loss.item():>7.4f} | {acc:>8.4f} | {status}")
 
         # Check if model successfully overfits small batch
-        if acc < 0.9:
+        if acc < SMALL_BATCH_SUCCESS_THRESHOLD:
             print("\nWarning: Model may not be learning properly on small batch")
         else:
             print("\nModel successfully overfits small batch - architecture is working!")
@@ -885,8 +887,7 @@ class SiameseFaceRecognition:
         # Set up early stopping parameters
         best_val_loss = float('inf')  # Track the best validation loss
         patience_counter = 0  # Count epochs without improvement
-        patience = 5  # Maximum epochs to wait for improvement
-        best_model_state = None  # Store best model weights
+        patience = EARLY_STOPPING_PATIENCE  # Maximum epochs to wait for improvement
 
         # === Main Training Loop ===
         print("\nEpoch | Train Loss | Train Acc | Val Loss | Val Acc | Status")
@@ -1347,7 +1348,7 @@ class SiameseFaceRecognition:
             'correct': [],
             'incorrect': []
         }
-        self.analyze_results(history, example_pairs)
+        self                                                                                                .analyze_results(history, example_pairs)
 
         print("\nVisualizing failure cases...")
         self.visualize_failures()
