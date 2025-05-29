@@ -26,7 +26,6 @@ POOL_SIZE = (2, 2)
 L2_CONV_REG = 2e-4             # L2 regularization for conv layers
 L2_DENSE_REG = 1e-3            # L2 regularization for dense layer
 
-
 #================== Training Configuration =================
 # General Training Parameters
 EPOCHS = 10
@@ -39,4 +38,20 @@ SMALL_BATCH_TEST_LEARNING_RATE = 1e-3
 SMALL_BATCH_TEST_ITERATIONS = 20
 SMALL_BATCH_SUCCESS_THRESHOLD = 0.9
 SMALL_BATCH_GOOD_PROGRESS_THRESHOLD = 0.7
-#================== Data Augmentation ====================
+
+#================== N-way One-shot Configuration =================
+# Based on the original paper's configuration
+N_WAY = 20                     # Number of classes for N-way classification
+N_WAY_EPISODES = 1000          # Number of episodes for N-way evaluation
+SUPPORT_SET_SIZE = 1           # Number of support examples per class (1 for one-shot)
+CLASSIFIER_HIDDEN_SIZE = 512    # Hidden layer size for N-way classifier
+
+# N-way Training Parameters
+N_WAY_BATCH_SIZE = 1           # Batch size for N-way training (usually 1 episode at a time)
+N_WAY_LEARNING_RATE = 1e-4     # Specific learning rate for N-way training
+N_WAY_EPOCHS = 20              # Number of epochs for N-way training
+N_WAY_EARLY_STOPPING = 10      # Early stopping patience for N-way training
+
+# N-way Evaluation Thresholds
+N_WAY_SUCCESS_THRESHOLD = 0.95  # Accuracy threshold for successful N-way training
+N_WAY_PROGRESS_THRESHOLD = 0.85 # Threshold for good progress in N-way training
