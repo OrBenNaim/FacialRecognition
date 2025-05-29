@@ -21,7 +21,7 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 - Images per person distribution:
 
 ##### Distribution Visualization
-![Train Val Distribution](./src/images/train_val_dist.png)
+![Train Val Distribution](images/train_val_dist.png)
 
    #### Training + Validation Set Analysis
    - Most common case: 1 image per person (62.3% of people)
@@ -175,7 +175,7 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 
 
 #### Learning Curves Analysis
-![Training History](src/images/training_results.png)
+![Training History](images/training_results.png)
 - **Key Observations**:
   - Clear signs of overfitting after epoch 4
   - Training accuracy continued improving while validation plateaued
@@ -215,7 +215,7 @@ These results suggest the need for:
 
 ### 4.3 Error Analysis
 #### Misclassification Examples
-![Misclassified Examples](src/images/misclassified_examples.png)
+![Misclassified Examples](images/misclassified_examples.png)
 
 #### Common Error Patterns
 1. **False Positives**:
