@@ -28,19 +28,6 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
    - Least common case: 8 images per person (0.14% of people)
    - Dataset imbalance ratio: 8:1 (max:min images per person)
 
-#### Test Set
-- Total images: 1000
-- Total unique persons: 963
-- Average images per person: 1.609
-
-##### Distribution Visualization
-![Test Distribution](./src/images/test_dist.png)
-
-   #### Test Set Analysis
-   - Most common case: one image per person (62.5% of people)
-   - Least common case: 7 images per person (0.62% of people)
-   - Dataset imbalance ratio: 7:1 (max:min images per person)
-
 ##### Key Observations:
 1. **Highly Imbalanced Distribution**:
    - In both sets, the majority of people (>60%) have only one image
