@@ -1,4 +1,6 @@
 import os
+from typing import Dict, List
+
 import matplotlib.pyplot as plt
 
 
@@ -79,3 +81,32 @@ def plot_distribution_charts(train_val_dist: dict, test_dist: dict, save_dir: st
     plt.close()
 
     print(f"Distribution plots saved in: {os.path.abspath(save_dir)}")
+
+def analyze_results(history: Dict[str, List[float]]) -> None:
+    """
+    Analyze and visualize training results as required by the exercise.
+    """
+    # Create a figure for multiple plots
+    plt.figure(figsize=(15, 10))
+
+    # Plot 1: Training and Validation Loss
+    plt.subplot(2, 2, 1)
+    plt.plot(history['loss'], label='Training Loss')
+    plt.plot(history['val_loss'], label='Validation Loss')
+    plt.title('Model Loss Over Time')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Plot 2: Training and Validation Accuracy
+    plt.subplot(2, 2, 2)
+    plt.plot(history['accuracy'], label='Training Accuracy')
+    plt.plot(history['val_accuracy'], label='Validation Accuracy')
+    plt.title('Model Accuracy Over Time')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    # Save plots
+    plt.tight_layout()
+    plt.savefig('./src/images/training_results.png')
