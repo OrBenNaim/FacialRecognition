@@ -1004,7 +1004,28 @@ class SiameseFaceRecognition:
 
     def analyze_results(self, history: Dict[str, List[float]]) -> None:
         """
-        Analyze and visualize training results as required by the exercise.
+        Analyzes and visualizes the model's training history by creating plots of loss and accuracy metrics.
+
+        Creates a figure with two subplots:
+        1. Training and validation loss over epochs
+        2. Training and validation accuracy over epochs
+
+        Args:
+            history: Dict[str, List[float]]
+                A dictionary containing training history with the following keys:
+                - 'loss': List of training loss values per epoch
+                - 'val_loss': List of validation loss values per epoch
+                - 'accuracy': List of training accuracy values per epoch
+                - 'val_accuracy': List of validation accuracy values per epoch
+
+        Returns:
+            None
+                Saves the visualization plots to './src/images/training_results.png'
+
+        Notes:
+            - The figure size is set to 15x10 inches
+            - Both plots include legends and proper axis labels
+            - Uses matplotlib's tight_layout for optimal subplot arrangement
         """
         # Create a figure for multiple plots
         plt.figure(figsize=(15, 10))
