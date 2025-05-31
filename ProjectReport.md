@@ -214,7 +214,7 @@ These results suggest the need for:
 
 ### 4.3 Error Analysis
 #### Misclassification Examples
-![Misclassified Examples](images/misclassified_examples.png)
+![Misclassified Examples](images/validation_set_misclassified_examples.png)
 
 #### Common Error Patterns
 1. **False Positives**:
