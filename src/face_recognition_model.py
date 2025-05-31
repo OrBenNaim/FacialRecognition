@@ -6,6 +6,9 @@ from collections import defaultdict, Counter  # For efficient data structure han
 import matplotlib.pyplot as plt
 import json
 from typing import Dict, List
+
+from numpy import floating, ndarray, dtype
+from numpy._core.multiarray import _SCT
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, f1_score
 
 # Third-party imports
@@ -31,7 +34,7 @@ from src.constants import (
     POOL_SIZE,  # Pooling layer size
     LEARNING_RATE, SMALL_BATCH_SUCCESS_THRESHOLD, SMALL_BATCH_TEST_ITERATIONS,
     EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, SAVE_IMG_DIR_PATH  # Learning rate for optimization
+    TEST_FILE_PATH, SAVE_IMG_DIR_PATH, CLASSIFICATION_THRESHOLD  # Learning rate for optimization
 )
 from src.utils import plot_distribution_charts  # Visualization utilities
 
@@ -828,7 +831,7 @@ class SiameseFaceRecognition:
                 self.optimizer.step()  # Update weights
 
                 # Calculate accuracy for monitoring
-                predictions = (outputs > 0.5).float()  # Binary classification threshold
+                predictions = (outputs > CLASSIFICATION_THRESHOLD).float()  # Binary classification threshold
                 acc = (predictions == labels).float().mean().item()
 
                 # Display progress with a visual status indicator
@@ -904,7 +907,7 @@ class SiameseFaceRecognition:
 
                 # Track metrics
                 train_loss += loss.item()
-                predictions = (outputs > 0.5).float()
+                predictions = (outputs > CLASSIFICATION_THRESHOLD).float()
                 train_acc += (predictions == labels).float().mean().item()
                 train_batches += 1
 
@@ -931,7 +934,7 @@ class SiameseFaceRecognition:
                     loss = self.criterion(outputs, labels)
 
                     val_loss += loss.item()
-                    predictions = (outputs > 0.5).float()
+                    predictions = (outputs > CLASSIFICATION_THRESHOLD).float()
                     val_acc += (predictions == labels).float().mean().item()
                     val_batches += 1
 
@@ -998,7 +1001,7 @@ class SiameseFaceRecognition:
 
         return history
 
-    def analyze_results(self, history: Dict[str, List[float]], examples: Dict[str, List[tuple]]) -> None:
+    def analyze_results(self, history: Dict[str, List[float]]) -> None:
         """
         Analyze and visualize training results as required by the exercise.
         """
@@ -1025,7 +1028,7 @@ class SiameseFaceRecognition:
 
         # Save plots
         plt.tight_layout()
-        plt.savefig('./src/images/training_results.png')
+        plt.savefig(SAVE_IMG_DIR_PATH+'/training_results.png')
 
     def visualize_failures(self, num_examples: int = 5) -> None:
         """
@@ -1055,7 +1058,7 @@ class SiameseFaceRecognition:
                 true_label = self.test_pair_labels[i]
 
                 output = self.model(img1, img2)
-                pred = (output > 0.5).float().item()
+                pred = (output > CLASSIFICATION_THRESHOLD).float().item()
 
                 if pred != true_label:
                     misclassified_pairs.append((
@@ -1090,23 +1093,23 @@ class SiameseFaceRecognition:
         else:
             print("No misclassified examples found in the test set!")
 
-    def calculate_detailed_metrics(self) -> Dict[str, float]:
+    def calculate_detailed_metrics(self, pairs: np.ndarray, pair_labels: np.ndarray) -> Dict[str, float]:
         """
         Calculate detailed performance metrics as required by the exercise.
         """
-        accuracy, predictions, labels, _ = self.evaluate_verification()
+        accuracy, predictions, gt_labels = self.evaluate_verification(pairs, pair_labels)
 
         # Calculate ROC curve and AUC
-        fpr, tpr, thresholds = roc_curve(labels, predictions)
+        fpr, tpr, thresholds = roc_curve(gt_labels, predictions)
         auc_score = auc(fpr, tpr)
 
         # Calculate precision-recall curve
-        precision, recall, _ = precision_recall_curve(labels, predictions)
-        avg_precision = average_precision_score(labels, predictions)
+        precision, recall, _ = precision_recall_curve(gt_labels, predictions)
+        avg_precision = average_precision_score(gt_labels, predictions)
 
         # Calculate F1 score
-        pred_labels = (predictions > 0.5).astype(int)
-        f1 = f1_score(labels, pred_labels)
+        pred_labels = (predictions > CLASSIFICATION_THRESHOLD).astype(int)
+        f1 = f1_score(gt_labels, pred_labels)
 
         metrics = {
             'accuracy': accuracy,
@@ -1142,7 +1145,8 @@ class SiameseFaceRecognition:
         with open('experiment_details.json', 'w') as f:
             json.dump(experiment_details, f, indent=4)
 
-    def evaluate_verification(self) -> tuple[float, np.ndarray, np.ndarray, np.ndarray | None]:
+    def evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
+            -> tuple[floating[Any], ndarray[Any, dtype[_SCT]], ndarray[Any, dtype[_SCT]]]:
         """
         Evaluate the model on a verification task (same/different person).
         """
@@ -1153,8 +1157,8 @@ class SiameseFaceRecognition:
 
         # Create DataLoader for a test set with fixed batch size
         # No shuffling to maintain pair order for analysis
-        test_dataset = SiameseDataset(self.test_pairs, self.test_pair_labels)
-        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+        dataset = SiameseDataset(pairs, pair_labels)
+        loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)
 
         # Set model to evaluation mode (affects dropout, batch norm, etc.)
         self.model.eval()
@@ -1167,7 +1171,7 @@ class SiameseFaceRecognition:
         with torch.no_grad():
 
             # Process each batch of image pairs
-            for img1, img2, labels in test_loader:
+            for img1, img2, labels in loader:
                 # Move data to appropriate device (CPU/GPU)
                 img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
 
@@ -1187,18 +1191,18 @@ class SiameseFaceRecognition:
 
         # Convert lists to numpy arrays for efficient computation
         predictions = np.array(all_predictions)  # Raw prediction scores
-        test_labels = np.array(all_labels).flatten()  # Ground truth labels
+        gt_labels = np.array(all_labels).flatten()  # Ground truth labels
 
         # Convert raw predictions to binary decisions
         # Using 0.5 as a threshold for binary classification
-        pred_labels = (predictions > 0.5).astype(int).flatten()
+        pred_labels = (predictions > CLASSIFICATION_THRESHOLD).astype(int).flatten()
 
         # Calculate overall accuracy across all pairs
-        accuracy = np.mean(pred_labels == test_labels)
+        accuracy = np.mean(pred_labels == gt_labels)
 
         # Calculate separate metrics for same-person and different-person pairs
-        positive_mask = test_labels == 1  # Mask for same-person pairs
-        negative_mask = test_labels == 0  # Mask for different-person pairs
+        positive_mask = gt_labels == 1  # Mask for same-person pairs
+        negative_mask = gt_labels == 0  # Mask for different-person pairs
 
         # True Positive Rate (sensitivity): accuracy on same-person pairs
         tpr = np.mean(pred_labels[positive_mask] == 1) if np.any(positive_mask) else 0
@@ -1212,7 +1216,7 @@ class SiameseFaceRecognition:
         print(f"True Negative Rate: {tnr:.4f}")
 
         # Return all relevant data for further analysis if needed
-        return accuracy, predictions, test_labels, self.test_pairs
+        return accuracy, predictions, gt_labels
 
     def evaluate_n_way_one_shot(self, n_way: int = 20, num_trials: int = 250) -> float:
         """
@@ -1309,15 +1313,10 @@ class SiameseFaceRecognition:
         history = self.train(EPOCHS, BATCH_SIZE)
 
         print("\nCalculating detailed metrics...")
-        metrics = self.calculate_detailed_metrics()
+        metrics = self.calculate_detailed_metrics(self.val_pairs, self.val_pair_labels)
 
         print("\nAnalyzing results...")
-        # Collect some example pairs for visualization
-        example_pairs = {
-            'correct': [],
-            'incorrect': []
-        }
-        self                                                                                                .analyze_results(history, example_pairs)
+        self.analyze_results(history)
 
         print("\nVisualizing failure cases...")
         self.visualize_failures()
@@ -1335,7 +1334,7 @@ class SiameseFaceRecognition:
             json.dump(final_results, f, indent=4)
 
         print("\nExperiment completed!")
+        print("Final Validation dataset results:")
         print(f"Final Accuracy: {metrics['accuracy']:.4f}")
         print(f"Final AUC Score: {metrics['auc']:.4f}")
         print(f"Final F1 Score: {metrics['f1_score']:.4f}")
-
