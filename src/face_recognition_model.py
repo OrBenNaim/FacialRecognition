@@ -57,6 +57,7 @@ warnings.filterwarnings('ignore')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
+
 class SiameseDataset(Dataset):
     """
     Custom Dataset class for handling pairs of images for Siamese Network training.
@@ -182,7 +183,7 @@ class BaseNetwork(nn.Module):
         """
         Calculate the flattened feature size after all convolutions.
         This is needed to properly size the fully connected layer.
-        Uses a fake forward pass to compute the dimensions.
+        Use a fake forward pass to compute the dimensions.
         """
         dummy_input = torch.zeros(1, self.input_shape[2], self.input_shape[0], self.input_shape[1])
 
@@ -198,7 +199,7 @@ class BaseNetwork(nn.Module):
     def _initialize_weights(self):
         """
         Initialize network weights using Xavier/Glorot uniform initialization.
-        This helps achieve better convergence by maintaining appropriate
+        This helps achieve better convergence by maintaining the appropriate
         variance of activations across layers.
         """
         for m in self.modules():
@@ -262,7 +263,7 @@ class SiameseNetwork(nn.Module):
         # Both images will be processed through this same network
         self.base_network = BaseNetwork(input_shape)
 
-        # Final prediction layer that takes L1 distance and outputs similarity score
+        # The Final prediction layer that takes L1 distance and outputs similarity score
         # Input size is 4096 (size of feature embedding from base network)
         # Output size is 1 (single similarity score)
         self.prediction = nn.Linear(4096, 1)
@@ -294,7 +295,7 @@ class SiameseNetwork(nn.Module):
         # This measures how different the embeddings are
         l1_distance = torch.abs(output1 - output2)  # Shape: (batch_size, 4096)
 
-        # Final prediction with sigmoid activation
+        # The Final prediction with sigmoid activation
         # Maps the distance to a similarity score between 0 and 1
         prediction = torch.sigmoid(self.prediction(l1_distance))  # Shape: (batch_size, 1)
 
@@ -1028,7 +1029,7 @@ class SiameseFaceRecognition:
 
         # Save plots
         plt.tight_layout()
-        plt.savefig(SAVE_IMG_DIR_PATH+'/training_results.png')
+        plt.savefig(SAVE_IMG_DIR_PATH + '/training_results.png')
 
     def visualize_failures(self, num_examples: int = 5) -> None:
         """
@@ -1286,7 +1287,7 @@ class SiameseFaceRecognition:
                 if support_labels[pred_idx] == 1:
                     correct += 1
 
-            except Exception as e:
+            except Exception:
                 failures += 1
                 continue
 
