@@ -18,7 +18,6 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 - Total images: 2,200
 - Total unique persons: 2,132
 - Average images per person: 1.615
-- Images per person distribution:
 
 ##### Distribution Visualization
 ![Train Val Distribution](images/train_val_dist.png)
