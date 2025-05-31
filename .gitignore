@@ -12,6 +12,7 @@ __pycache__/
 DATA/
 experiment_details.json
 best_model.pth
+final_results.json
 
 # Distribution / packaging
 .Python
