@@ -8,7 +8,6 @@ import json
 from typing import Dict, List
 
 from numpy import floating, ndarray, dtype
-from numpy._core.multiarray import _SCT
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, f1_score
 
 # Third-party imports
@@ -1039,7 +1038,7 @@ class SiameseFaceRecognition:
         misclassified_pairs = []
 
         with torch.no_grad():
-            for i in range(len(self.test_pairs)):
+            for i in range(len(self.val_pairs)):
                 # Convert numpy arrays to PyTorch tensors
                 img1 = torch.from_numpy(self.test_pairs[i][0]).float()
                 img2 = torch.from_numpy(self.test_pairs[i][1]).float()
@@ -1147,7 +1146,7 @@ class SiameseFaceRecognition:
             json.dump(experiment_details, f, indent=4)
 
     def evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
-            -> tuple[floating[Any], ndarray[Any, dtype[_SCT]], ndarray[Any, dtype[_SCT]]]:
+            -> tuple[floating[Any], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
         Evaluate the model on a verification task (same/different person).
         """
