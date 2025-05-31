@@ -34,7 +34,7 @@ from src.constants import (
     POOL_SIZE,  # Pooling layer size
     LEARNING_RATE, SMALL_BATCH_SUCCESS_THRESHOLD, SMALL_BATCH_TEST_ITERATIONS,
     EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, SAVE_IMG_DIR_PATH, CLASSIFICATION_THRESHOLD  # Learning rate for optimization
+    TEST_FILE_PATH, SAVE_IMG_DIR_PATH, CLASSIFICATION_THRESHOLD
 )
 from src.utils import plot_distribution_charts  # Visualization utilities
 
