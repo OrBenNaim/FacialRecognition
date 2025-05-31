@@ -1,7 +1,7 @@
 # Standard library imports
 import os
 import warnings
-from typing import Tuple, Optional, Any  # Type hints for better code documentation
+from typing import Tuple, Optional, Any, Set  # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
 import matplotlib.pyplot as plt
 import json
@@ -19,7 +19,6 @@ import torch.nn as nn  # Neural network modules
 import torch.nn.functional as F  # Neural network functions
 from torch.utils.data import Dataset, DataLoader  # Data handling utilities
 from PIL import Image  # Image processing
-from sklearn.model_selection import train_test_split  # Dataset splitting
 from tqdm import tqdm  # Progress bar functionality
 
 # Local imports - Constants and utility functions
@@ -36,7 +35,7 @@ from src.constants import (
     EARLY_STOPPING_PATIENCE, SMALL_BATCH_GOOD_PROGRESS_THRESHOLD, TRAIN_FILE_PATH,
     TEST_FILE_PATH, SAVE_IMG_DIR_PATH, CLASSIFICATION_THRESHOLD
 )
-from src.utils import plot_distribution_charts  # Visualization utilities
+from src.utils import plot_distribution_charts, move_data_to_appropriate_device  # Visualization utilities
 
 # Setup for reproducibility
 # Setting random seeds for all components to ensure consistent results
@@ -341,29 +340,24 @@ class SiameseFaceRecognition:
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
 
-        # Initialize data storage for training/validation set
+        # Initialize data storage for training + validation set
         self.train_val_person_images: Optional[Dict[str, List[str]]] = None
         self.train_val_image_dict: Optional[Dict[str, np.ndarray]] = None
-        self.train_val_dist = None
-
-        # Initialize data storage for a test set
-        self.test_person_images: Optional[Dict[str, List[str]]] = None
-        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
+        self.train_val_distribution = None
 
         # Initialize arrays for training data
-        self.train_images: Optional[np.ndarray] = None
-        self.train_labels: Optional[np.ndarray] = None
+        self.train_people_names: Optional[List[str]] = None
         self.train_pairs: Optional[np.ndarray] = None
         self.train_pair_labels: Optional[np.ndarray] = None
 
         # Initialize arrays for validation data
-        self.val_images: Optional[np.ndarray] = None
-        self.val_labels: Optional[np.ndarray] = None
+        self.val_people_names: Optional[List[str]] = None
         self.val_pairs: Optional[np.ndarray] = None
         self.val_pair_labels: Optional[np.ndarray] = None
 
         # Initialize arrays for test data
-        self.test_images: Optional[np.ndarray] = None
+        self.test_person_images: Optional[Dict[str, List[str]]] = None
+        self.test_image_dict: Optional[Dict[str, np.ndarray]] = None
         self.test_labels: Optional[np.ndarray] = None
         self.test_pairs: Optional[np.ndarray] = None
         self.test_pair_labels: Optional[np.ndarray] = None
@@ -409,7 +403,7 @@ class SiameseFaceRecognition:
         - Images are automatically resized to self.input_shape
         - Original image files are not modified
         """
-        # === Input Validation ===
+        # ===== Input Validation =====
         # Ensure all required files and directories exist
         if not os.path.exists(data_path_folder):
             raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
@@ -421,7 +415,6 @@ class SiameseFaceRecognition:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
         print(f"Image resize target: {self.input_shape[0]}x{self.input_shape[1]}")
-        print("Loading LFW-a dataset...")
 
         # First, load all unique images and create a mapping
         def load_all_images(pairs_file: str, base_path: str) -> Tuple[Dict[str, np.ndarray], Dict[str, List[str]]]:
@@ -526,31 +519,44 @@ class SiameseFaceRecognition:
 
             return image_dict, person_images
 
-        # Load pairs from a file
-        def load_pairs(pairs_file: str, image_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+        def split_people(person_images: Dict[str, List[str]], val_split: float) -> Tuple[List[str], List[str]]:
             """
-            Create image pairs and labels from a pair's definition file.
+            Split people into training and validation sets.
 
-            Parameters
-            ----------
-            pairs_file : str
-                Path to the LFW pairs file
-            image_dict : Dict[str, np.ndarray]
-                Dictionary mapping image keys to preprocessed image arrays
+            Args:
+                person_images: Dictionary mapping person names to their image keys
+                val_split: Fraction of people to use for validation
 
-            Returns
-            -------
-            tuple
+            Returns:
+                Tuple of (train_people, val_people) lists
+            """
+            all_people = list(person_images.keys())
+            np.random.shuffle(all_people)
+
+            split_idx = int(len(all_people) * (1 - val_split))
+            train_people = all_people[:split_idx]
+            val_people = all_people[split_idx:]
+
+            return train_people, val_people
+
+        # Load pairs from a file
+        def create_pairs_for_set(pairs_file: str, image_dict: Dict[str, np.ndarray],
+                                 allowed_people: Set[str]) -> Tuple[np.ndarray, np.ndarray]:
+            """
+            Create pairs only using people from the allowed set.
+
+            Args:
+                pairs_file: Path to the pair's file
+                image_dict: Dictionary of all loaded images
+                allowed_people: Set of people allowed in this split
+
+            Returns:
+                tuple
                 (pairs, labels) where:
                 - pairs: np.ndarray of shapes (n_pairs, 2, height, width, channels)
                 - labels: np.ndarray of binary labels (1=same person, 0=different)
-
-            Notes
-            -----
-            - Only create pairs where both images exist in image_dict
-            - Positive pairs (same person) come from 3-value lines
-            - Negative pairs (different people) come from 4-value lines
             """
+
             pairs = []
             labels = []
 
@@ -563,6 +569,9 @@ class SiameseFaceRecognition:
 
                 if len(parts) == 3:  # Same person (positive pair)
                     person_name = parts[0]
+                    if person_name not in allowed_people:
+                        continue
+
                     img1_num = int(parts[1])
                     img2_num = int(parts[2])
 
@@ -577,6 +586,9 @@ class SiameseFaceRecognition:
 
                 elif len(parts) == 4:  # Different person (negative pair)
                     person1, person2 = parts[0], parts[2]
+                    if person1 not in allowed_people or person2 not in allowed_people:
+                        continue
+
                     img1_num, img2_num = int(parts[1]), int(parts[3])
 
                     # Create lookup keys for images from different people
@@ -592,73 +604,41 @@ class SiameseFaceRecognition:
             return np.array(pairs), np.array(labels)
 
         # === Step 1: Load Dataset ===
-        print("Loading images...")
+        print("Loading LFW-a dataset...")
 
         # Load all unique images from a dataset file and create mappings
         temp_image_dict, temp_person_images = load_all_images(dataset_file_path, data_path_folder)
-
-        # === Step 3: Create Image Pairs ===
-        print("\nCreating pairs...")
-
-        # Create positive and negative pairs from the dataset
-        temp_pairs, temp_labels = load_pairs(dataset_file_path, temp_image_dict)
-
-        # === Step 4: Prepare Individual Images for One-shot Learning ===
-        # Extract all unique dataset images and their labels
-        temp_images = []
-        temp_image_labels = []
-        for person, img_keys in temp_person_images.items():
-            for img_key in img_keys:
-                if img_key in temp_image_dict:
-                    temp_images.append(temp_image_dict[img_key])
-                    temp_image_labels.append(person)
-
-        # === Step 5: Convert Lists to Arrays and Store Data ===
-        temp_images = np.array(temp_images)
 
         if dataset_file_path == TRAIN_FILE_PATH:
             self.train_val_person_images = temp_person_images
             self.train_val_image_dict = temp_image_dict
 
-            # === Step 6: Split Training Data ===
-            print(f"\nSplitting training + validation data (validation split: {validation_split})...")
+            # ===== Step 2: Split Training Data =====
+            print(f"\nSplitting training data into training/validation data (validation split: {validation_split})...")
+            self.train_people_names, self.val_people_names = split_people(person_images=temp_person_images,
+                                                                          val_split=validation_split)
+            # ===== Step 3: Create Image Pairs =====
+            print("\nCreating pairs...")
 
-            train_pairs, val_pairs, train_labels, val_labels = train_test_split(
-                temp_pairs, temp_labels, test_size=validation_split,
-                random_state=RANDOM_SEED, stratify=temp_labels
-            )
-
-            # Store paired data for model training
-            self.train_pairs = train_pairs
-            self.train_pair_labels = train_labels
-            self.val_pairs = val_pairs
-            self.val_pair_labels = val_labels
-
-            # Add channel dimension for grayscale images if needed
-            if len(temp_images.shape) == 3:  # If images don't have channel dimension
-                self.train_images = temp_images[..., np.newaxis]
-
-            # Create sequential labels for individual images (for compatibility)
-            self.train_labels = np.arange(len(temp_images))
-
-            # Store the validation split of individual images
-            val_size = int(len(self.train_images) * validation_split)
-            self.val_images = self.train_images[:val_size]
-            self.val_labels = self.train_labels[:val_size]
-
+            # Create training pairs from the dataset
+            self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
+                                                                            image_dict=temp_image_dict,
+                                                                            allowed_people=set(self.train_people_names))
+            # Create validation pairs from the dataset
+            self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
+                                                                        image_dict=temp_image_dict,
+                                                                        allowed_people=set(self.val_people_names))
         elif dataset_file_path == TEST_FILE_PATH:
             self.test_person_images = temp_person_images
-            self.train_val_image_dict = temp_image_dict
+            self.test_image_dict = temp_image_dict
 
-            # Store paired data for model training
-            self.test_pairs = temp_pairs
-            self.test_pair_labels = temp_labels
+            # ===== Step 3: Create Image Pairs =====
+            print("\nCreating pairs...")
 
-            # Add channel dimension for grayscale images if needed
-            if len(temp_images.shape) == 3:  # If images don't have channel dimension
-                self.test_images = temp_images[..., np.newaxis]
-
-            self.test_labels = np.arange(len(temp_images))
+            # Create testing pairs from the dataset
+            self.test_pairs, self.test_pair_labels = (
+                create_pairs_for_set(pairs_file=dataset_file_path,
+                                     image_dict=temp_image_dict, allowed_people=set(self.test_person_images.keys())))
 
         else:
             raise ValueError(f"Invalid dataset file path: {dataset_file_path}")
@@ -685,7 +665,7 @@ class SiameseFaceRecognition:
         """
         print("\n=== Detailed Dataset Analysis ===")
 
-        self.train_val_dist = [len(images) for images in self.train_val_person_images.values()]
+        self.train_val_distribution = [len(images) for images in self.train_val_person_images.values()]
 
         # Calculate and store comprehensive statistics
         self.stats = {
@@ -703,17 +683,17 @@ class SiameseFaceRecognition:
 
             # Calculate the distribution of images per person and store in stats
             'train+val_images_per_person_distribution': dict(
-                Counter(self.train_val_dist)),
+                Counter(self.train_val_distribution)),
 
-            'average_train+val_images_per_person': round(len(self.train_images) / len(self.train_val_person_images), 3),
+            'average_train+val_images_per_person': round((len(self.train_pairs) * 2 + len(self.val_pairs) * 2)
+                                                         / len(self.train_val_person_images), 3),
 
-            'min_train+val_images_per_person': min(self.train_val_dist),
-            'max_train+val_images_per_person': max(self.train_val_dist),
+            'min_train+val_images_per_person': min(self.train_val_distribution),
+            'max_train+val_images_per_person': max(self.train_val_distribution),
 
-            'train_val_dist_mean': round(np.mean(self.train_val_dist), 3),
-            'train_val_dist_median': round(np.median(self.train_val_dist), 3),
-            'train_val_dist_std': round(np.std(self.train_val_dist), 3),
-
+            'train_val_dist_mean': round(np.mean(self.train_val_distribution), 3),
+            'train_val_dist_median': round(np.median(self.train_val_distribution), 3),
+            'train_val_dist_std': round(np.std(self.train_val_distribution), 3),
         }
 
         for key, val in self.stats.items():
@@ -721,7 +701,7 @@ class SiameseFaceRecognition:
 
         print("=" * 50)
 
-        plot_distribution_charts(Counter(self.train_val_dist))
+        plot_distribution_charts(Counter(self.train_val_distribution))
 
     def create_siamese_network(self) -> SiameseNetwork:
         """
@@ -890,7 +870,7 @@ class SiameseFaceRecognition:
             train_batches = 0
 
             for img1, img2, labels in train_loader:
-                img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+                img1, img2, labels = move_data_to_appropriate_device(img1, img2, labels, device)
 
                 # Add channel dimension if needed
                 if len(img1.shape) == 3:
@@ -924,7 +904,7 @@ class SiameseFaceRecognition:
 
             with torch.no_grad():
                 for img1, img2, labels in val_loader:
-                    img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+                    img1, img2, labels = move_data_to_appropriate_device(img1, img2, labels, device)
 
                     # Add channel dimension if needed
                     if len(img1.shape) == 3:
@@ -953,6 +933,7 @@ class SiameseFaceRecognition:
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
                 patience_counter = 0
+
                 # Save the best model state
                 best_model_state = self.model.state_dict().copy()
                 torch.save(best_model_state, 'best_model.pth')
@@ -1211,8 +1192,42 @@ class SiameseFaceRecognition:
     def evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
             -> tuple[floating[Any], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
-        Evaluate the model on a verification task (same/different person).
+        Evaluates the Siamese network's performance on face verification tasks.
+
+        Processes pairs of face images through the model to determine if they belong to the same person
+        or different people.
+        Calculates and displays various performance metrics, including overall accuracy,
+        true positive rate (sensitivity), and true negative rate (specificity).
+
+        Args:
+            pairs: np.ndarray
+                Array of image pairs to evaluate.
+                Shape should be compatible with
+                the SiameseDataset format.
+            pair_labels: np.ndarray
+                Binary labels for each pair (1 for the same person, 0 for different people).
+
+        Returns:
+            tuple[float, np.ndarray, np.ndarray]
+                A tuple containing:
+                - accuracy: Overall accuracy across all pairs
+                - predictions: Raw model prediction scores before thresholding
+                - gt_labels: Ground truth labels used for evaluation
+
+        Notes:
+            - Uses BATCH_SIZE constant for batch processing
+            - Applies CLASSIFICATION_THRESHOLD to convert raw predictions to binary decisions
+            - Automatically handles grayscale images by adding channel dimension if needed
+            - Prints detailed evaluation metrics to console
+            - Model is set to evaluation mode during inference
+            - Gradients are disabled during evaluation for efficiency
+
+        Performance Metrics:
+            - Overall Accuracy: Proportion of correctly classified pairs
+            - True Positive Rate: Accuracy on same-person pairs (sensitivity)
+            - True Negative Rate: Accuracy on different-person pairs (specificity)
         """
+
         # Print evaluation header
         print("\n" + "=" * 50)
         print("Evaluating Verification Performance")
@@ -1280,83 +1295,6 @@ class SiameseFaceRecognition:
 
         # Return all relevant data for further analysis if needed
         return accuracy, predictions, gt_labels
-
-    def evaluate_n_way_one_shot(self, n_way: int = 20, num_trials: int = 250) -> float:
-        """
-        Evaluate N-way one-shot classification accuracy.
-
-        Parameters:
-            n_way (int): Number of classes (identities) to compare.
-            num_trials (int): Number of trials to run.
-
-        Returns:
-            float: N-way classification accuracy in percentage.
-        """
-        print(f"\nStarting {n_way}-way one-shot evaluation with {num_trials} trials...")
-        self.model.eval()
-        correct = 0
-        failures = 0
-
-        people = list(self.test_person_images.keys())
-
-        for _ in tqdm(range(num_trials), desc=f"{n_way}-way Evaluation"):
-            try:
-                # Step 1: Select N different people
-                selected_people = np.random.choice(people, size=n_way, replace=False)
-
-                # Step 2: Choose one person as the positive class
-                positive_person = selected_people[0]
-                positive_images = self.test_person_images[positive_person]
-
-                if len(positive_images) < 2:
-                    failures += 1
-                    continue
-
-                # Step 3: Pick a query and positive image
-                img1_key, img2_key = np.random.choice(positive_images, size=2, replace=False)
-                img1 = torch.from_numpy(self.test_image_dict[img1_key]).float().unsqueeze(0).unsqueeze(0).to(device)
-
-                support_images = []
-                support_labels = []
-
-                # Add one positive example
-                img2 = torch.from_numpy(self.test_image_dict[img2_key]).float().unsqueeze(0).unsqueeze(0).to(device)
-                support_images.append(img2)
-                support_labels.append(1)
-
-                # Step 4: Add (n_way - 1) negative samples
-                for neg_person in selected_people[1:]:
-                    neg_images = self.test_person_images[neg_person]
-
-                    if not neg_images:
-                        continue
-
-                    neg_img_key = np.random.choice(neg_images)
-                    neg_img = torch.from_numpy(self.test_image_dict[neg_img_key]).float().unsqueeze(0).unsqueeze(0).to(
-                        device)
-
-                    support_images.append(neg_img)
-                    support_labels.append(0)
-
-                # Step 5: Compare a query to all support images
-                query = img1.repeat(len(support_images), 1, 1, 1)
-                supports = torch.cat(support_images, dim=0)
-
-                with torch.no_grad():
-                    scores = self.model(query, supports).squeeze()
-
-                pred_idx = torch.argmax(scores).item()
-                if support_labels[pred_idx] == 1:
-                    correct += 1
-
-            except Exception:
-                failures += 1
-                continue
-
-        actual_trials = num_trials - failures
-        accuracy = (correct / actual_trials) * 100 if actual_trials > 0 else 0
-        print(f"{n_way}-way one-shot accuracy: {accuracy:.2f}% over {actual_trials} valid trials (skipped {failures})")
-        return accuracy
 
     def run_complete_experiment(self) -> None:
         """Run the complete experiment pipeline"""
