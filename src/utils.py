@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from src.constants import SAVE_IMG_DIR_PATH
 
 
-def plot_distribution_charts(train_val_dist: dict, save_dir: str=SAVE_IMG_DIR_PATH) -> None:
+def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
     """
     Create and save distribution plots for the dataset.
 
@@ -56,3 +56,26 @@ def plot_distribution_charts(train_val_dist: dict, save_dir: str=SAVE_IMG_DIR_PA
     plt.close()
 
     print(f"Distribution plots saved in: {os.path.abspath(save_dir)}")
+
+
+def move_data_to_appropriate_device(img1, img2, labels, device):
+    """
+    Moves input tensors to the specified device (CPU/GPU).
+
+    Args:
+        img1 (torch.Tensor): First image batch tensor
+        img2 (torch.Tensor): Second image batch tensor
+        labels (torch.Tensor): Corresponding labels tensor
+        device (torch.device): Target device to move the data to
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Triple of tensors (img1, img2, labels)
+            moved to the specified device
+
+    Note:
+        This helper function is used to ensure consistent device placement
+        of input data for model training and evaluation
+    """
+
+    img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
+    return img1, img2, labels
