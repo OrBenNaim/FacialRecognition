@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import json
 from typing import Dict, List
 
+# Second-party modules
 from numpy import floating, ndarray, dtype
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, f1_score
 
@@ -1030,23 +1031,61 @@ class SiameseFaceRecognition:
         plt.tight_layout()
         plt.savefig(SAVE_IMG_DIR_PATH + '/training_results.png')
 
-    def visualize_failures(self, num_examples: int = 5) -> None:
+    def visualize_failures(self, pairs: np.ndarray, pair_labels: np.ndarray, num_examples: int = 5) -> None:
         """
-        Visualize and analyze misclassified pairs as required by the exercise.
+        Visualizes pairs of face images that were misclassified by the Siamese network.
+
+        This method processes either validation or test dataset to find pairs where the model's prediction
+        differs from the true label. It creates a visualization grid showing the misclassified
+        pairs along with their true and predicted labels, saving the result as an image file.
+
+        Args:
+            pairs: np.ndarray
+                Array of image pairs to evaluate. Must be either self.val_pairs or self.test_pairs.
+            pair_labels: np.ndarray
+                Array of true labels corresponding to the image pairs.
+            num_examples: int, optional (default=5)
+                The maximum number of misclassified pairs to visualize.
+                If fewer misclassified pairs are found, all will be shown.
+
+        Returns:
+            None
+                Saves the visualization to './src/images/{dataset_name}_misclassified_examples.png'
+                where dataset_name is either 'validation_set' or 'test_set',
+                and displays a message if no misclassified examples are found.
+
+        Raises:
+            Exception: If pairs parameter is neither self.val_pairs nor self.test_pairs.
+
+        Notes:
+            - The model must be trained before calling this method
+            - Images are displayed in grayscale
+            - Each row shows a pair of images with their true and predicted labels
         """
+
+        if pairs is self.val_pairs:
+            dataset_name = 'validation_set'
+
+        elif pairs is self.test_pairs:
+            dataset_name = 'test_set'
+
+        else:
+            raise Exception("pairs parameter must be either self.val_pairs or self.test_pairs")
+
         self.model.eval()
         misclassified_pairs = []
 
         with torch.no_grad():
-            for i in range(len(self.val_pairs)):
+            for i in range(len(pairs)):
                 # Convert numpy arrays to PyTorch tensors
-                img1 = torch.from_numpy(self.test_pairs[i][0]).float()
-                img2 = torch.from_numpy(self.test_pairs[i][1]).float()
+                img1 = torch.from_numpy(pairs[i][0]).float()
+                img2 = torch.from_numpy(pairs[i][1]).float()
 
                 # Add batch and channel dimensions if needed
                 if len(img1.shape) == 2:  # If the image is 2D (height x width)
                     img1 = img1.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
                     img2 = img2.unsqueeze(0).unsqueeze(0)
+
                 elif len(img1.shape) == 3:  # If the image has channels but no batch
                     img1 = img1.unsqueeze(0)
                     img2 = img2.unsqueeze(0)
@@ -1055,7 +1094,7 @@ class SiameseFaceRecognition:
                 img1 = img1.to(device)
                 img2 = img2.to(device)
 
-                true_label = self.test_pair_labels[i]
+                true_label = pair_labels[i]
 
                 output = self.model(img1, img2)
                 pred = (output > CLASSIFICATION_THRESHOLD).float().item()
@@ -1074,13 +1113,16 @@ class SiameseFaceRecognition:
         # Visualize misclassified pairs
         if misclassified_pairs:
             fig, axes = plt.subplots(len(misclassified_pairs), 2, figsize=(8, 2 * len(misclassified_pairs)))
+
             for i, (img1, img2, true_label, pred) in enumerate(misclassified_pairs):
+
                 if len(misclassified_pairs) == 1:
                     axes[0].imshow(img1[0, 0], cmap='gray')
                     axes[1].imshow(img2[0, 0], cmap='gray')
                     axes[0].set_title(f'True: {true_label:.0f}, Pred: {pred:.0f}')
                     axes[0].axis('off')
                     axes[1].axis('off')
+
                 else:
                     axes[i, 0].imshow(img1[0, 0], cmap='gray')
                     axes[i, 1].imshow(img2[0, 0], cmap='gray')
@@ -1089,9 +1131,9 @@ class SiameseFaceRecognition:
                     axes[i, 1].axis('off')
 
             plt.tight_layout()
-            plt.savefig('./src/images/misclassified_examples.png')
+            plt.savefig(SAVE_IMG_DIR_PATH + f'/{dataset_name}_misclassified_examples.png')
         else:
-            print("No misclassified examples found in the test set!")
+            print(f"No misclassified examples found in the {dataset_name}!")
 
     def calculate_detailed_metrics(self, pairs: np.ndarray, pair_labels: np.ndarray) -> Dict[str, float]:
         """
@@ -1318,8 +1360,8 @@ class SiameseFaceRecognition:
         print("\nAnalyzing results...")
         self.analyze_results(history)
 
-        print("\nVisualizing failure cases...")
-        self.visualize_failures()
+        print("\nVisualizing Validation failure cases...")
+        self.visualize_failures(self.val_pairs, self.val_pair_labels)
 
         # Save final metrics
         final_results = {
