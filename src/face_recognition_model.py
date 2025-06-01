@@ -18,6 +18,7 @@ import torch.optim as optim  # Optimization algorithms
 import torch.nn as nn  # Neural network modules
 import torch.nn.functional as F  # Neural network functions
 from torch.utils.data import Dataset, DataLoader  # Data handling utilities
+from torch.utils.tensorboard import SummaryWriter
 from PIL import Image  # Image processing
 from tqdm import tqdm  # Progress bar functionality
 
@@ -332,7 +333,11 @@ class SiameseFaceRecognition:
             during loading, NOT the original size of your image files.
         """
         # Store the target shape for input images (height, width, channels)
-        self.input_shape = input_shape
+        self.input_shape: tuple[int, int, int] = input_shape
+
+        self.experiment_name: str = ""
+        self.tensorboard_log_dir: str = ""
+        self.writer: Optional[SummaryWriter] = None
 
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
@@ -1296,8 +1301,12 @@ class SiameseFaceRecognition:
         # Return all relevant data for further analysis if needed
         return accuracy, predictions, gt_labels
 
-    def run_complete_experiment(self) -> None:
+    def run_complete_experiment(self, experiment_name: str) -> None:
         """Run the complete experiment pipeline"""
+
+        self.experiment_name = experiment_name
+        self.tensorboard_log_dir = os.path.join("output", "tensorboard_logs", self.experiment_name)
+        self.writer = SummaryWriter(log_dir=self.tensorboard_log_dir)
 
         print("Starting experiment...")
 
