@@ -15,9 +15,10 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 
 ### 2.2 Data Distribution
 #### Training + Validation Set
-- Total images: 2,200
+- Total images: 4400
 - Total unique persons: 2,132
-- Average images per person: 1.615
+- Average images per person: 1.729
+
 
 ##### Distribution Visualization
 ![Train Val Distribution](images/train_val_dist.png)
@@ -66,7 +67,7 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
    - Early stopping patience: 5 epochs
 
 3. **Small Batch Test Parameters**:
-   - Learning rate: 1e-3
+   - Learning rate: 6e-5
    - Test iterations: 20
    - Success threshold: 0.9
    - Good progress threshold: 0.7
@@ -148,82 +149,115 @@ The implementation uses the Labeled Faces in the Wild (LFW-a) dataset, which pre
 #### Initial Experiment Results
 - **Hardware**: CUDA-enabled GPU
 - **Total Parameters**: 68,311,873
-- **Total Epochs**: 9 (early stopping triggered)
-- **Batch Size**: 32 (for initial small batch test)
+- **Total Epochs**: 10
+- **Batch Size**: 32
 
 #### Training Progress:
 1. **Small Batch Test Phase**:
-   - Initial accuracy: 0.5938 (epoch 1)
-   - Final accuracy: 0.7188 (epoch 10)
-   - Model succeeds in reaching target accuracy (0.9)
-   - Showed slow but steady improvement
-   - Model successfully overfits small batch—architecture is working!
+   - Perfect performance achieved (100% accuracy)
+   - Loss decreased steadily from 0.4747 to 0.0704
+   - Model successfully overfits a small batch, confirming architecture functionality
+
 
 2. **Full Dataset Training**:
    - **Training Loss Progress**:
-     - Initial: 0.6865 → Final: 0.0274
-     - Rapid improvement from epoch 4 onwards
+     - Initial: 0.7325 → Final: 0.5528
+     - Steady improvement throughout training
    
    - **Training Accuracy Progress**:
-     - Initial: 0.5790 → Final: 1.0000
-     - Crossed 0.80 threshold at epoch 5
+     - Initial: 0.5885 → Final: 0.7299
+     - Consistent improvement over epochs
+
      
    - **Validation Performance**:
-     - Best validation loss: 0.5736 (epoch 5)
-     - Final validation accuracy: 0.6950
+     - Best validation loss: 0.5286 (epoch 10)
+     - Final validation accuracy: 0.7789
+     - Best validation accuracy achieved in the final epoch
 
 
 #### Learning Curves Analysis
 ![Training History](images/training_results.png)
 - **Key Observations**:
-  - Clear signs of overfitting after epoch 4
-  - Training accuracy continued improving while validation plateaued
-  - Significant gap between training and validation performance
-  - Early stopping successfully prevented further overfitting
+  - Steady improvement in training metrics across all epochs
+  - Training loss decreased consistently from 0.7325 to 0.5528
+  - Validation performance peaked at epoch 10 with best loss of 0.5286
+  - A relatively small gap between training and validation metrics indicates good generalization
+  - Model showed consistent improvement without severe overfitting
+  - Validation accuracy improved from ~0.71 to 0.7789, showing stable learning
+  - Training and validation curves followed similar trends, suggesting robust learning
+  - No early stopping triggered, indicating continued learning potential
+
 
 ### 4.2 Model Performance Metrics
 #### Overall Metrics
-- **Test Accuracy**: 70.40%
-- **AUC Score**: 0.7749
-- **F1 Score**: 0.6942
-- **True Positive Rate**: 0.6720
-- **True Negative Rate**: 0.7360
+- **Final Validation Accuracy**: 0.7828
+- **AUC Score**: 0.7626
+- **F1 Score**: 0.8623
+- **True Positive Rate**: 0.8098
+- **True Negative Rate**: 0.6410
+
 
 #### Performance Analysis
-1. **Success Cases**:
-   - Better performance on positive pairs (76.60% accuracy)
-   - Consistent learning throughout the training phase
-   
+1. - Strong performance on positive pairs (TPR: 0.8098)
+   - High F1 Score indicating a good balance between precision and recall
+   - Consistent improvement in both training and validation metrics
+
 2. **Challenge Cases**:
-   - Lower performance on negative pairs (64.20% accuracy)
-   - Significant gap between training and validation accuracy
-   - Failed to achieve target accuracy in a small batch test
-   - Signs of overfitting despite early stopping
+   - Lower performance on negative pairs (TNR: 0.6410)
+   - Some gap between training and validation metrics
+   - Model shows slight signs of overfitting in later epochs
 
-This initial experiment reveals several challenges:
-1. The model shows signs of overfitting, with training accuracy reaching 99% while validation stays around 73%
-2. The performance gap between positive and negative pairs suggests potential bias
-3. The small batch test failure indicates potential issues with the initial learning phase
-4. Despite having a large number of parameters (68M), the model achieves moderate performance on the test set
 
-These results suggest the need for:
-1. Better regularization techniques
-2. Revised learning rate strategy
-3. Potential architectural modifications
-4. Investigation of small batch learning issues
+This initial experiment reveals several observations and challenges:
+1. The model demonstrates good overall performance (78.28% validation accuracy) but shows room for improvement
+2. There is an imbalance in performance between positive pairs (TPR: 0.8098) and negative pairs (TNR: 0.6410)
+3. The model successfully learns discriminative features, achieving an AUC score of 0.7626 and F1 score of 0.8623
+4. While training is stable, the final performance suggests potential for further optimization
+
+These results suggest the following areas for improvement:
+1. Address the performance imbalance between positive and negative pairs through:
+   - Balanced pair sampling strategies
+   - Specialized loss functions for handling imbalanced similarity learning
+2. Explore architectural modifications to improve negative pair discrimination
+3. Investigate data augmentation techniques to enhance model robustness
+4. Consider extending training duration as learning curves indicate potential for further improvement
+
 
 ### 4.3 Error Analysis
 #### Misclassification Examples
 ![Misclassified Examples](images/validation_set_misclassified_examples.png)
 
-#### Common Error Patterns
-1. **False Positives**:
-   - Similar facial features leading to mismatches
-   - Lighting conditions affecting recognition
-   
-2. **False Negatives**:
-   - Extreme pose variations
-   - Significant expression changes
+#### Error Distribution
+1. **False Negatives** (TPR = 0.8098):
+   - ~19% of genuine pairs are misclassified
+   - Most errors are likely due to:
+     - Significant pose variations between pairs
+     - Different lighting conditions
+     - Expression changes
+
+2. **False Positives** (TNR = 0.6410):
+   - ~36% of non-matching pairs misclassified
+   - Higher error rate than false negatives
+   - Main contributing factors:
+     - Similar facial features between different individuals
+     - Consistent lighting/pose making different individuals appear similar
+
+#### Key Error Patterns
+1. **Positive Pair Recognition**:
+   - Strong performance with 80.98% success rate
+   - Errors concentrated in cases with significant appearance variations
+   - Model shows resilience to moderate pose and lighting changes
+
+2. **Negative Pair Discrimination**:
+   - More challenging with a 64.10% success rate
+   - Model shows difficulty in distinguishing similar-looking individuals
+   - Performance suggests a need for better feature discrimination
+
+3. **Overall Error Distribution**:
+   - Balanced F1 score (0.8623) indicates good overall discrimination
+   - A higher false positive rate suggests the model tends toward optimistic matching
+   - Error patterns align with common challenges in face recognition systems
+
    
 ### 4.4 Parameter Sensitivity Analysis
 #### Key Parameters Impact
