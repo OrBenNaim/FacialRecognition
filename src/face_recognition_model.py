@@ -1759,7 +1759,39 @@ class SiameseFaceRecognition:
         return self.model
 
     def log_dataset_analysis_to_tensorboard(self) -> None:
-        """Log dataset analysis to TensorBoard instead of console printing"""
+        """
+        Analyze and log dataset statistics and distributions to TensorBoard.
+
+        This method calculates and logs various dataset metrics including:
+        - Dataset size statistics (total pairs, unique people, unique images)
+        - Class distribution (positive/negative pairs)
+        - Images per person distribution
+        - Visual distribution plots
+
+        The following metrics are logged to TensorBoard:
+        Scalars:
+            - Total training and validation pairs
+            - Number of positive/negative pairs in train/val sets
+            - Number of unique people and images
+
+        Visualizations:
+            - Histogram of images per person distribution
+            - Bar plot of images per person distribution
+            - Text summary of key statistics
+
+        Notes:
+            - Requires self.train_val_person_images and related attributes to be populated
+            - Logs are saved to the tensorboard_log_dir specified during initialization
+            - All visualizations are tagged under the 'Dataset/' namespace in TensorBoard
+            - Automatically closes matplotlib figures to prevent memory leaks
+
+        Example TensorBoard tags:
+            - Dataset/total_train_pairs
+            - Dataset/total_val_pairs
+            - Dataset/images_per_person_distribution
+            - Dataset/distribution_plot
+            - Dataset/Summary
+        """
 
         # Calculate stats (keep existing calculation logic)
         self.train_val_distribution = [len(images) for images in self.train_val_person_images.values()]
@@ -1955,7 +1987,17 @@ class SiameseFaceRecognition:
         self.writer.add_text(f'Misclassified_{dataset_name}/Summary', misclass_summary, 0)
 
     def train(self, epochs: int, batch_size: int, pairs_per_epoch: Optional[int] = None) -> Dict[str, List[float]]:
-        """Streamlined training method with TensorBoard logging only"""
+        """
+        Train the Siamese network using PyTorch.
+
+        Args:
+            epochs: Maximum number of training epochs
+            batch_size: Batch size for training
+            pairs_per_epoch: Number of pairs to generate per epoch (if not using preloaded)
+
+        Returns:
+            Dict containing training history
+        """
 
         # Minimal console output for essential info
         print("🚀 Starting Training...")
@@ -2258,17 +2300,47 @@ class SiameseFaceRecognition:
         self.writer.close()
 
         # Minimal final console output
-        print("✅ Experiment completed!")
+        print("✅ Experiment completed!\n")
         print(f"📊 View results: tensorboard --logdir={self.tensorboard_log_dir}")
         print(f"🎯 Final Validation Accuracy: {metrics['accuracy']:.4f}")
         print(f"🏆 Final AUC Score: {metrics['auc']:.4f}")
 
-    def analyze_train_val_dataset_distribution(self) -> None:
-        """Replace it with TensorBoard logging"""
-        self.log_dataset_analysis_to_tensorboard()
-
     def analyze_results(self, history: Dict[str, List[float]]) -> None:
-        """Replace matplotlib saving with TensorBoard logging"""
+        """
+        Analyze and visualize training results using TensorBoard.
+
+        Creates and logs training history visualizations showing the model's performance
+        over time, including loss and accuracy curves for both training and validation sets.
+
+        Parameters
+        ----------
+        history : Dict[str, List[float]]
+            Dictionary containing training history with the following keys:
+            - 'train_loss': List of training loss values per epoch
+            - 'val_loss': List of validation loss values per epoch
+            - 'train_accuracy': List of training accuracy values per epoch
+            - 'val_accuracy': List of validation accuracy values per epoch
+
+        Visualization Details
+        -------------------
+        Creates a single figure with two subplots:
+        1. Loss Plot:
+           - Training and validation loss curves
+           - X-axis: Epochs
+           - Y-axis: Loss values
+
+        2. Accuracy Plot:
+           - Training and validation accuracy curves
+           - X-axis: Epochs
+           - Y-axis: Accuracy values (0-1)
+
+        Notes
+        -----
+        - Visualizations are logged to TensorBoard under the 'Results/training_curves' tag
+        - Automatically closes matplotlib figures to prevent memory leaks
+        - The figure can be viewed in TensorBoard's Images tab
+        """
+
         # Create plots and log to TensorBoard instead of saving files
 
         # Loss plot
@@ -2291,7 +2363,3 @@ class SiameseFaceRecognition:
 
         self.writer.add_figure('Results/training_curves', fig, 0)
         plt.close(fig)
-
-    def visualize_failures(self, pairs: np.ndarray, pair_labels: np.ndarray, num_examples: int = 5) -> None:
-        """Replace it with TensorBoard logging"""
-        self.log_misclassified_examples_to_tensorboard(pairs, pair_labels, num_examples)
