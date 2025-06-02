@@ -837,8 +837,8 @@ class SiameseFaceRecognition:
 
         # Initialize dictionary to track training metrics
         history = {
-            'loss': [],  # Training loss per epoch
-            'accuracy': [],  # Training accuracy per epoch
+            'train_loss': [],  # Training loss per epoch
+            'train_accuracy': [],  # Training accuracy per epoch
             'val_loss': [],  # Validation loss per epoch
             'val_accuracy': []  # Validation accuracy per epoch
         }
@@ -929,8 +929,8 @@ class SiameseFaceRecognition:
             avg_val_acc = val_acc / val_batches
 
             # Update history
-            history['loss'].append(avg_train_loss)
-            history['accuracy'].append(avg_train_acc)
+            history['train_loss'].append(avg_train_loss)
+            history['train_accuracy'].append(avg_train_acc)
             history['val_loss'].append(avg_val_loss)
             history['val_accuracy'].append(avg_val_acc)
 
@@ -958,6 +958,13 @@ class SiameseFaceRecognition:
                 print(f"  Best validation loss: {best_val_loss:.4f}")
                 break
 
+            # Track training/validation metrics over time with TensorBoard:
+            self.writer.add_scalar('Loss/Train', train_loss, epoch)
+            self.writer.add_scalar('Loss/Validation', val_loss, epoch)
+            self.writer.add_scalar('Accuracy/Train', train_acc, epoch)
+            self.writer.add_scalar('Accuracy/Validation', avg_val_acc, epoch)
+            self.writer.add_scalar('Learning_Rate', self.optimizer.param_groups[0]['lr'], epoch)
+
         # Load best weights
         print("\n✓ Loading best model weights...")
         self.model.load_state_dict(torch.load('best_model.pth'))
@@ -965,9 +972,9 @@ class SiameseFaceRecognition:
         # Store training history and statistics
         self.history = history
         self.stats['training'] = {
-            'epochs_trained': len(history['loss']),
-            'final_train_loss': history['loss'][-1],
-            'final_train_accuracy': history['accuracy'][-1],
+            'epochs_trained': len(history['train_loss']),
+            'final_train_loss': history['train_loss'][-1],
+            'final_train_accuracy': history['train_accuracy'][-1],
             'final_val_loss': history['val_loss'][-1],
             'final_val_accuracy': history['val_accuracy'][-1],
             'best_val_loss': best_val_loss,
@@ -980,8 +987,8 @@ class SiameseFaceRecognition:
         print("\n" + "=" * 50)
         print("Training Summary")
         print("=" * 50)
-        print(f"✓ Training completed in {len(history['loss'])} epochs")
-        print(f"✓ Final training accuracy: {history['accuracy'][-1]:.4f}")
+        print(f"✓ Training completed in {len(history['train_loss'])} epochs")
+        print(f"✓ Final training accuracy: {history['train_accuracy'][-1]:.4f}")
         print(f"✓ Final validation accuracy: {history['val_accuracy'][-1]:.4f}")
         print(f"✓ Best validation loss: {best_val_loss:.4f}")
         print("=" * 50)
@@ -1018,7 +1025,7 @@ class SiameseFaceRecognition:
 
         # Plot 1: Training and Validation Loss
         plt.subplot(2, 2, 1)
-        plt.plot(history['loss'], label='Training Loss')
+        plt.plot(history['train_loss'], label='Training Loss')
         plt.plot(history['val_loss'], label='Validation Loss')
         plt.title('Model Loss Over Time')
         plt.xlabel('Epoch')
@@ -1027,7 +1034,7 @@ class SiameseFaceRecognition:
 
         # Plot 2: Training and Validation Accuracy
         plt.subplot(2, 2, 2)
-        plt.plot(history['accuracy'], label='Training Accuracy')
+        plt.plot(history['train_accuracy'], label='Training Accuracy')
         plt.plot(history['val_accuracy'], label='Validation Accuracy')
         plt.title('Model Accuracy Over Time')
         plt.xlabel('Epoch')
@@ -1334,9 +1341,9 @@ class SiameseFaceRecognition:
         # Save final metrics
         final_results = {
             'metrics': metrics,
-            'final_train_loss': history['loss'][-1],
+            'final_train_loss': history['train_loss'][-1],
             'final_val_loss': history['val_loss'][-1],
-            'final_train_acc': history['accuracy'][-1],
+            'final_train_acc': history['train_accuracy'][-1],
             'final_val_acc': history['val_accuracy'][-1]
         }
 
