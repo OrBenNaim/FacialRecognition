@@ -27,4 +27,4 @@ if __name__ == '__main__':
         # Run experiment
         model.run_complete_experiment(use_improved_arch=True)
 
-        print(f"✅ Completed {model.experiment_name}")
+        print(f"\n✅ Completed {model.experiment_name}")
