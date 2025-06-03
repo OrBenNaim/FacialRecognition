@@ -160,7 +160,7 @@ Base Training Parameters:
 - Batch Size: 32
 - Optimizer: Adam
 - Loss: Binary Cross-Entropy
-- Epochs: 10
+- Epochs: 50
 
 ##### Siamese Configuration
 - Twin networks with shared weights
@@ -212,9 +212,9 @@ Base Training Parameters:
 1. Learning Rate Variations:
    ```python
    configurations = [
-       {"lr": 6e-5, "batch_size": 32, "epochs": 10},
-       {"lr": 3e-5, "batch_size": 64, "epochs": 20},
-       {"lr": 1e-4, "batch_size": 32, "epochs": 15}
+       {"lr": 6e-5, "batch_size": 32, "epochs": 50},
+       {"lr": 3e-5, "batch_size": 64, "epochs": 50},
+       {"lr": 1e-4, "batch_size": 32, "epochs": 50}
    ]
    ```
 
@@ -238,12 +238,12 @@ Base Training Parameters:
 ### 4.3 Comparative Analysis
 
 #### Performance Comparison
-| Experiment | Accuracy | F1 Score | AUC     | 
-|------------|----------|----------|---------|
-| Baseline   | 75%      | 0.838    | 0.762   | 
-| Deep Net   | X%       | X        | X hours |
-| Best Hyper | X%       | X        | X hours |
-| Cont. Loss | X%       | X        | X hours |
+| Experiment | Accuracy | F1 Score | AUC    | 
+|------------|----------|----------|--------|
+| Baseline   | 75.41%   | 0.838    | 0.8387 | 
+| Deep Net   | X%       | X        | X      |
+| Best Hyper | X%       | X        | X      |
+| Cont. Loss | X%       | X        | X      |
 
 
 
