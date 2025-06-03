@@ -29,10 +29,7 @@ L2_DENSE_REG = 1e-3            # L2 regularization for dense layer
 
 #================== Training Configuration =================
 # General Training Parameters
-EPOCHS = 10
-BATCH_SIZE = 32
-LEARNING_RATE = 6e-5
-EARLY_STOPPING_PATIENCE = 5
+EARLY_STOPPING_PATIENCE = 15
 CLASSIFICATION_THRESHOLD = 0.5
 
 # Small Batch Test Parameters
