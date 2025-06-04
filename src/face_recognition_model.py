@@ -30,9 +30,10 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     EARLY_STOPPING_PATIENCE, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD
+    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, IMPROVED_KERNEL_SIZES, STRIDE, IMPROVED_NUM_OF_FILTERS
 )
-from src.utils import plot_distribution_charts, move_data_to_appropriate_device  # Visualization utilities
+from src.utils import plot_distribution_charts, move_data_to_appropriate_device, \
+    apply_simple_augmentation  # Visualization utilities
 
 # Setup for reproducibility
 # Setting random seeds for all components to ensure consistent results
@@ -60,7 +61,7 @@ class SiameseDataset(Dataset):
     Inherits from torch.utils.data.Dataset for PyTorch compatibility.
     """
 
-    def __init__(self, pairs: np.ndarray, labels: np.ndarray):
+    def __init__(self, pairs: np.ndarray, labels: np.ndarray, augment: bool):
         """
         Initialize the dataset with image pairs and their corresponding labels.
 
@@ -68,9 +69,11 @@ class SiameseDataset(Dataset):
             pairs: numpy array of shape (N, 2, H, W) containing N pairs of images
             labels: numpy array of shape (N, ) containing binary labels
                    (1 for the same person, 0 for different people)
+            augment: boolean flag to indicate if augmentation should be applied
         """
         self.pairs = pairs
         self.labels = labels
+        self.augment = augment
 
     def __len__(self) -> int:
         """
@@ -94,9 +97,24 @@ class SiameseDataset(Dataset):
                 - img2: Second image of the pair as FloatTensor
                 - label: Binary label as FloatTensor (1 for the same person, 0 for different)
         """
-        img1 = torch.FloatTensor(self.pairs[idx, 0])
-        img2 = torch.FloatTensor(self.pairs[idx, 1])
-        label = torch.FloatTensor([self.labels[idx]])
+        # Get images and label for the given index
+        img1, img2 = self.pairs[idx]
+        label = self.labels[idx]
+
+        # Apply simple augmentation if enabled
+        if self.augment:
+            img1 = apply_simple_augmentation(img1)
+            img2 = apply_simple_augmentation(img2)
+
+        # Create a contiguous copy of the arrays before converting to tensors
+        img1 = np.ascontiguousarray(img1)
+        img2 = np.ascontiguousarray(img2)
+
+        # Convert to PyTorch tensors
+        img1 = torch.FloatTensor(img1)
+        img2 = torch.FloatTensor(img2)
+        label = torch.FloatTensor([label])
+
         return img1, img2, label
 
 
@@ -240,20 +258,37 @@ class ImprovedBaseNetwork(nn.Module):
         super(ImprovedBaseNetwork, self).__init__()
         self.input_shape = input_shape
 
-        # Improved architecture with BatchNorm and smaller kernels
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=5, padding=2)
+        # Layer 1: First convolutional block
+        # Input: (input_shape) -> Output: (NUM_OF_FILTERS_LAYER1 feature maps)
+        self.conv1 = nn.Conv2d(
+            in_channels=input_shape[2],     # Number of input channels (1 for grayscale),
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],     # Number of output feature maps
+            kernel_size=IMPROVED_KERNEL_SIZES['layer1'],
+            padding=2)
         self.bn1 = nn.BatchNorm2d(64)
-        self.pool1 = nn.MaxPool2d(2, 2)
+        self.pool1 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
 
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=5, padding=2)
+        self.conv2 = nn.Conv2d(
+            in_channels=IMPROVED_NUM_OF_FILTERS['layer1'],
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer2'],
+            kernel_size=IMPROVED_KERNEL_SIZES['layer2'],
+            padding=2)
         self.bn2 = nn.BatchNorm2d(128)
-        self.pool2 = nn.MaxPool2d(2, 2)
+        self.pool2 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
 
-        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(
+            in_channels=IMPROVED_NUM_OF_FILTERS['layer2'],
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer3'],
+            kernel_size=IMPROVED_KERNEL_SIZES['layer3'],
+            padding=1)
         self.bn3 = nn.BatchNorm2d(256)
-        self.pool3 = nn.MaxPool2d(2, 2)
+        self.pool3 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
 
-        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(
+            in_channels=IMPROVED_NUM_OF_FILTERS['layer3'],
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer4'],
+            kernel_size=IMPROVED_KERNEL_SIZES['layer4'],
+            padding=1)
         self.bn4 = nn.BatchNorm2d(512)
 
         # Calculate flattened size
@@ -400,7 +435,7 @@ class SiameseNetwork(nn.Module):
 
 
 class FaceRecognition:
-    def __init__(self, input_shape: tuple[int, int, int], learning_rate: float, batch_size: int, epochs: int) -> None:
+    def __init__(self, input_shape: tuple[int, int, int]) -> None:
         """
         Initialize FaceRecognition class.
 
@@ -418,21 +453,24 @@ class FaceRecognition:
         # Store the target shape for input images (height, width, channels)
         self.input_shape: tuple[int, int, int] = input_shape
 
-        self.experiment_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}"
-        self.tensorboard_log_dir = os.path.join("tensorboard_logs", self.experiment_name)
+        self.lr: Optional[float] = None
+        self.batch_size: Optional[int] = None
+        self.epochs: Optional[int] = None
 
-        self.lr = learning_rate
-        self.batch_size = batch_size
-        self.epochs = epochs
+        self.experiment_name: Optional[str] = None
+        self.tensorboard_log_dir: Optional[str] = None
+        self.writer: Optional[SummaryWriter] = None
 
-        os.makedirs(self.tensorboard_log_dir, exist_ok=True)
-        self.writer = SummaryWriter(log_dir=self.tensorboard_log_dir)
+        self.use_improved_arch: Optional[bool] = None
 
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
+
+        # Add text logging capabilities
+        self.experiment_start_time = None
 
         # Initialize data storage for training + validation set
         self.train_val_person_images: Optional[Dict[str, List[str]]] = None
@@ -459,8 +497,55 @@ class FaceRecognition:
         # Dictionary storing various statistics about the dataset and training
         self.stats: Dict[str, Any] = {}
 
+    def reset_exp_attr(self):
+        """
+        Resets all experiment-related attributes to their default state (None).
+
+        This method clears and reinitialized:
+        - Training parameters (learning rate, batch size, epochs)
+        - Experiment identifiers and logging setup
+        - Model architecture settings
+        - Model components (network, optimizer, loss history)
+        - Timing information
+
+        This is typically called before starting a new experiment to ensure
+        no settings from previous experiments carry over.
+
+        Attributes reset:
+            - lr (float): Learning rate
+            - batch_size (int): Batch size for training
+            - epochs (int): Number of training epochs
+            - experiment_name (str): Name identifier for the experiment
+            - tensorboard_log_dir (str): Directory for TensorBoard logs
+            - writer (SummaryWriter): TensorBoard writer instance
+            - use_improved_arch (bool): Flag for using improved architecture
+            - model (SiameseNetwork): Neural network model
+            - optimizer (optim.Adam): Adam optimizer instance
+            - history (Dict[str, List[float]]): Training history
+            - experiment_start_time: Timestamp for experiment start
+
+        Note:
+            The criterion (BCELoss) is reset to a new instance rather than None.
+        """
+        self.lr: Optional[float] = None
+        self.batch_size: Optional[int] = None
+        self.epochs: Optional[int] = None
+
+        self.experiment_name: Optional[str] = None
+        self.tensorboard_log_dir: Optional[str] = None
+        self.writer: Optional[SummaryWriter] = None
+
+        self.use_improved_arch: Optional[bool] = None
+
+        # Initialize model components
+        self.model: Optional[SiameseNetwork] = None
+        self.optimizer: Optional[optim.Adam] = None
+        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+        self.history: Optional[Dict[str, List[float]]] = None
+
         # Add text logging capabilities
         self.experiment_start_time = None
+
 
     # Load training and test datasets
     def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float) -> None:
@@ -738,7 +823,7 @@ class FaceRecognition:
         else:
             raise ValueError(f"Invalid dataset file path: {dataset_file_path}")
 
-    def create_siamese_network(self, use_improved_arch) -> SiameseNetwork:
+    def create_siamese_network(self) -> SiameseNetwork:
 
         """
         Create the complete Siamese network architecture using PyTorch.
@@ -753,21 +838,19 @@ class FaceRecognition:
                                                     |
             Input B -----> Base Network -----> Embedding B
                           (shared weights)
-        Args:
-            use_improved_arch: If True, uses improved architecture with BatchNorm and Dropout
-
         Returns:
             SiameseNetwork Object - The complete Siamese network model
         """
-        if use_improved_arch:
+        if self.use_improved_arch:
+
             # Use the improved architecture
             self.model = ImprovedSiameseNetwork(self.input_shape).to(device)
-            print("Using improved architecture with BatchNorm and Dropout")
+            print("Using improved architecture with BatchNorm and Dropout\n")
 
         else:
-            # Use your original architecture
+            # Use your base architecture
             self.model = SiameseNetwork(self.input_shape).to(device)
-            print("Using original architecture")
+            print("Using base architecture\n")
 
             # Create optimizer (keep existing code)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -777,7 +860,7 @@ class FaceRecognition:
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 
         print(f"Total parameters: {total_params:,}")
-        print(f"Trainable parameters: {trainable_params:,}")
+        print(f"Trainable parameters: {trainable_params:,}\n")
 
         return self.model
 
@@ -878,15 +961,12 @@ class FaceRecognition:
 
         # Log model graph
         try:
-            # Create dummy input for visualization
-            sample_input_1 = torch.randn(1, 1, *self.input_shape).to(device)
-            sample_input_2 = torch.randn(1, 1, *self.input_shape).to(device)
+            # Create fake input with correct shape (batch_size, channels, height, width)
+            sample_input_1 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
+            sample_input_2 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
 
             # Wrap inputs in a list instead of passing as separate arguments
-            self.writer.add_graph(
-                self.model,
-                [sample_input_1, sample_input_2]  # Pass as a list of tensors
-            )
+            self.writer.add_graph(self.model,[sample_input_1, sample_input_2])  # Pass as a list of tensors
 
         except Exception as e:
             self.writer.add_text('Model/graph_error', f"Could not log model graph: {e}", 0)
@@ -968,7 +1048,7 @@ class FaceRecognition:
         Args:
             pairs (np.ndarray): Array of image pairs to evaluate, shape (n_pairs, 2, height, width)
             pair_labels (np.ndarray): Ground truth labels for the pairs (0: different, 1: same), shape (n_pairs, )
-            num_examples (int, optional): Maximum number of misclassified examples to log. Defaults to 5.
+            num_examples (int, optional): Maximum number of misclassified examples to log. Default to 5.
 
         Returns:
             None
@@ -1023,25 +1103,12 @@ class FaceRecognition:
             combined_img = np.concatenate([example['img1'], example['img2']], axis=1)
             img_tensor = torch.tensor(combined_img).unsqueeze(0)  # Add channel dim
 
-            # caption = f"True: {example['true_label']}, Pred: {example['predicted_label']}"
-            # self.writer.add_image(
-            #     f'Misclassified_{dataset_name}/{caption}',
-            #     img_tensor,
-            #     idx,
-            # )
-
             self.writer.add_image(
-                f'Experiments/{self.experiment_name}/Misclassified_{dataset_name}/Example_{idx + 1}',
+                f'{self.experiment_name}/Misclassified_{dataset_name}/Example_{idx + 1}/'
+                f'True: {example['true_label']}, Pred: {example['predicted_label']}',
                 img_tensor,
                 global_step=0,
                 dataformats='CHW'  # Explicitly specify the format
-            )
-
-            # Add the label information as text
-            self.writer.add_text(
-                f'Experiments/{self.experiment_name}/Misclassified_{dataset_name}/Example_{idx + 1}_labels',
-                f"True label: {example['true_label']}, Predicted: {example['predicted_label']}",
-                global_step=0
             )
 
         # Log summary text
@@ -1052,7 +1119,7 @@ class FaceRecognition:
         """
         self.writer.add_text(f'Misclassified_{dataset_name}/Summary', misclass_summary, 0)
 
-    def train(self, use_improved_arch: bool) -> Dict[str, List[float]]:
+    def train(self) -> Dict[str, List[float]]:
         """
         Train the Siamese network using PyTorch.
 
@@ -1064,7 +1131,7 @@ class FaceRecognition:
         print("\n🚀 Starting Training...")
 
         if self.model is None:
-            self.create_siamese_network(use_improved_arch=use_improved_arch)
+            self.create_siamese_network()
 
         # Log model architecture
         self.log_model_architecture_to_tensorboard()
@@ -1090,11 +1157,11 @@ class FaceRecognition:
             train_pairs = self.train_pairs[indices]
             train_pair_labels = self.train_pair_labels[indices]
 
-            train_dataset = SiameseDataset(train_pairs, train_pair_labels)
-            val_dataset = SiameseDataset(self.val_pairs, self.val_pair_labels)
+            train_dataset = SiameseDataset(pairs=train_pairs, labels=train_pair_labels, augment=True)
+            val_dataset = SiameseDataset(pairs=self.val_pairs, labels=self.val_pair_labels, augment=False)
 
-            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+            train_loader = DataLoader(dataset=train_dataset, batch_size=self.batch_size, shuffle=True)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=self.batch_size, shuffle=False)
 
             # Training loop (existing logic)
             self.model.train()
@@ -1200,7 +1267,7 @@ class FaceRecognition:
         """
         Calculate detailed performance metrics as required by the exercise.
         """
-        accuracy, predictions, gt_labels = self.evaluate_verification(pairs, pair_labels)
+        accuracy, predictions, gt_labels = self.__evaluate_verification(pairs, pair_labels)
 
         # Calculate ROC curve and AUC
         fpr, tpr, thresholds = roc_curve(gt_labels, predictions)
@@ -1223,7 +1290,7 @@ class FaceRecognition:
 
         return metrics
 
-    def evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
+    def __evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
             -> tuple[floating[Any], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
         Evaluates the Siamese network's performance on face verification tasks.
@@ -1251,7 +1318,7 @@ class FaceRecognition:
         Notes:
             - Uses self.batch_size for batch processing
             - Applies CLASSIFICATION_THRESHOLD to convert raw predictions to binary decisions
-            - Automatically handles grayscale images by adding channel dimension if needed
+            - Automatically handles grayscale images by adding channel dimension if necessary
             - Prints detailed evaluation metrics to console
             - Model is set to evaluation mode during inference
             - Gradients are disabled during evaluation for efficiency
@@ -1269,7 +1336,7 @@ class FaceRecognition:
 
         # Create DataLoader for a test set with fixed batch size
         # No shuffling to maintain pair order for analysis
-        dataset = SiameseDataset(pairs, pair_labels)
+        dataset = SiameseDataset(pairs=pairs, labels=pair_labels, augment=False)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
 
         # Set model to evaluation mode (affects dropout, batch norm, etc.)
@@ -1330,41 +1397,6 @@ class FaceRecognition:
         # Return all relevant data for further analysis if needed
         return accuracy, predictions, gt_labels
 
-    def run_complete_experiment(self, use_improved_arch: bool) -> None:
-        """Streamlined experiment with TensorBoard-centric logging"""
-
-        print(f"🔬 Starting experiment: {self.experiment_name}")
-
-        # Log dataset analysis
-        print("\n📊 Analyzing dataset...")
-        self.log_dataset_analysis_to_tensorboard()
-
-
-        print(f"🎯 Training model, using use_improved_arch: {use_improved_arch}\n")
-        history = self.train(use_improved_arch)
-
-        # Calculate metrics
-        print("📈 Calculating metrics...")
-        metrics = self.calculate_detailed_metrics(self.val_pairs, self.val_pair_labels)
-
-        # Log final results
-        self.log_final_results_to_tensorboard(history, metrics)
-
-        self.analyze_results(history)
-
-        # Log misclassified examples
-        print("🔍 Analyzing failures...")
-        self.find_misclassified_examples(self.val_pairs, self.val_pair_labels)
-
-        # Close writer
-        self.writer.close()
-
-        # Minimal final console output
-        print("✅ Experiment completed!\n")
-        print(f"📊 View results: tensorboard --logdir={self.tensorboard_log_dir}")
-        print(f"🎯 Final Validation Accuracy: {metrics['accuracy']:.4f}")
-        print(f"🏆 Final AUC Score: {metrics['auc']:.4f}")
-
     def analyze_results(self, history: Dict[str, List[float]]) -> None:
         """
         Analyze and visualize training results using TensorBoard.
@@ -1383,7 +1415,7 @@ class FaceRecognition:
 
         Visualization Details
         -------------------
-        Creates a single figure with two subplots:
+         Create a single figure with two subplots:
         1. Loss Plot:
            - Training and validation loss curves
            - X-axis: Epochs
@@ -1423,3 +1455,45 @@ class FaceRecognition:
 
         # Add to tensorboard
         self.writer.add_figure('Results/training_curves', fig, 0)
+
+    def run_complete_experiment(self, learning_rate: float, batch_size: int, epochs: int,
+                                use_improved_arch: bool, exp_name: str) -> None:
+        """Streamlined experiment with TensorBoard-centric logging"""
+        self.lr = learning_rate
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.use_improved_arch = use_improved_arch
+        self.experiment_name = exp_name
+
+        self.tensorboard_log_dir = os.path.join("tensorboard_logs", self.experiment_name)
+        os.makedirs(self.tensorboard_log_dir, exist_ok=True)
+        self.writer = SummaryWriter(log_dir=self.tensorboard_log_dir)
+
+        print(f"\n🔬 Starting experiment: {self.experiment_name}")
+
+        history = self.train()
+
+        # Calculate metrics
+        print("\n📈 Calculating metrics...")
+        metrics = self.calculate_detailed_metrics(self.val_pairs, self.val_pair_labels)
+
+        # Log final results
+        self.log_final_results_to_tensorboard(history, metrics)
+
+        self.analyze_results(history)
+
+        # Log misclassified examples
+        print("\n🔍 Analyzing failures...")
+        self.find_misclassified_examples(self.val_pairs, self.val_pair_labels)
+
+        # Close writer
+        self.writer.close()
+
+        # Minimal final console output
+        print("\n✅ Experiment completed!")
+        print(f"\n📊 View results: tensorboard --logdir={self.tensorboard_log_dir}\n")
+
+        print("===== Validation results =====")
+        print(f"Final Accuracy: {metrics['accuracy']:.4f}")
+        print(f"Final Precision: {metrics['average_precision']:.4f}")
+        print(f"Final F1 Score: {metrics['f1_score']:.4f}")

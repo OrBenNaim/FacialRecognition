@@ -5,7 +5,7 @@ TEST_FILE_PATH = './DATA/pairsDevTest.txt'  # Path to test.txt
 SAVE_IMG_DIR_PATH = './images'  # Path to save images directory
 #============================================================
 
-# Image and Data Configuration
+#================== Image and Data Configuration ==================
 OPTIMIZED_IMG_SHAPE = (128, 128, 1)  # Optimized from original 250x250
 VALIDATION_SPLIT = 0.2
 RANDOM_SEED = 42
@@ -27,6 +27,22 @@ POOL_SIZE = (2, 2)
 L2_CONV_REG = 2e-4             # L2 regularization for conv layers
 L2_DENSE_REG = 1e-3            # L2 regularization for dense layer
 
+# Better architecture parameters
+IMPROVED_NUM_OF_FILTERS = {
+    'layer1': 64,
+    'layer2': 128,
+    'layer3': 256,
+    'layer4': 512,
+}
+
+IMPROVED_KERNEL_SIZES = {
+    'layer1': (5, 5),   # Instead of (10, 10)
+    'layer2': (5, 5),   # Instead of (7, 7)
+    'layer3': (3, 3),   # Instead of (4, 4)
+    'layer4': (3, 3),   # Instead of (4, 4)
+}
+STRIDE = 2
+
 #================== Training Configuration =================
 # General Training Parameters
 EARLY_STOPPING_PATIENCE = 15
@@ -39,3 +55,19 @@ SMALL_BATCH_SUCCESS_THRESHOLD = 0.9
 SMALL_BATCH_GOOD_PROGRESS_THRESHOLD = 0.7
 
 #================== Data Augmentation ====================
+# Probability thresholds for each augmentation
+HORIZONTAL_FLIP_THRESHOLD = 0.5         # 50% chance (if random > 0.5)
+BRIGHTNESS_ADJUST_THRESHOLD = 0.5       # 50% chance (if random > 0.5)
+GAUSSIAN_NOISE_THRESHOLD = 0.5          # 50% chance (if random > 0.5)
+
+# Brightness adjustment parameters
+BRIGHTNESS_MIN_FACTOR = 0.8             # Minimum brightness (80%)
+BRIGHTNESS_MAX_FACTOR = 1.2             # Maximum brightness (120%)
+
+# Gaussian noise parameters
+NOISE_MEAN = 0                          # Mean of Gaussian noise
+NOISE_STD = 0.05                        # Standard deviation of noise
+
+# Pixel value limits
+PIXEL_MIN_VALUE = 0                     # Minimum pixel value after clipping
+PIXEL_MAX_VALUE = 1                     # Maximum pixel value after clipping

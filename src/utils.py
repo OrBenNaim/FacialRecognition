@@ -1,8 +1,19 @@
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
-from src.constants import SAVE_IMG_DIR_PATH
-
+from src.constants import (
+    SAVE_IMG_DIR_PATH,
+    HORIZONTAL_FLIP_THRESHOLD,
+    BRIGHTNESS_ADJUST_THRESHOLD,
+    GAUSSIAN_NOISE_THRESHOLD,
+    BRIGHTNESS_MIN_FACTOR,
+    BRIGHTNESS_MAX_FACTOR,
+    NOISE_MEAN,
+    NOISE_STD,
+    PIXEL_MIN_VALUE,
+    PIXEL_MAX_VALUE
+)
 
 def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
     """
@@ -79,3 +90,31 @@ def move_data_to_appropriate_device(img1, img2, labels, device):
 
     img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
     return img1, img2, labels
+
+
+def apply_simple_augmentation(image_array):
+    """
+    Apply simple data augmentation to face images
+    Updated to use constants from constants.py
+
+    Args:
+        image_array: numpy array of shape (H, W)
+
+    Returns:
+        augmented image array
+    """
+    # Random horizontal flip (50% chance)
+    if np.random.random() > HORIZONTAL_FLIP_THRESHOLD:
+        image_array = np.fliplr(image_array)
+
+    # Random brightness adjustment (±20%)
+    if np.random.random() > BRIGHTNESS_ADJUST_THRESHOLD:
+        brightness_factor = np.random.uniform(BRIGHTNESS_MIN_FACTOR, BRIGHTNESS_MAX_FACTOR)
+        image_array = np.clip(image_array * brightness_factor, PIXEL_MIN_VALUE, PIXEL_MAX_VALUE)
+
+    # Add a small amount of Gaussian noise
+    if np.random.random() > GAUSSIAN_NOISE_THRESHOLD:
+        noise = np.random.normal(NOISE_MEAN, NOISE_STD, image_array.shape)
+        image_array = np.clip(image_array + noise, PIXEL_MIN_VALUE, PIXEL_MAX_VALUE)
+
+    return image_array
