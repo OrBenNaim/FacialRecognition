@@ -78,7 +78,7 @@ if __name__ == '__main__':
         batch_size = exp["batch_size"]
         epochs = exp["epochs"]
 
-        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_model_initialization_{0.25}"
+        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_dropout_reduced"
 
         use_improved_arch = None
 
