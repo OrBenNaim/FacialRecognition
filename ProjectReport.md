@@ -166,7 +166,7 @@ Base Training Parameters:
 
 ### 4.2 Experimental Trials
 
-#### Experiment 1: Base Architecture with Data Augmentation - Base_Aug
+#### Experiment 1: Base Architecture with Data Augmentation—Base_with_Aug
 **Motivation**: Investigate if 
 
 **Results**:
@@ -177,11 +177,22 @@ Base Training Parameters:
 
 **Analysis**:
 - Pros:
+  - Significant improvement in accuracy (0.791) compared to baseline (0.754)
+  - High precision (0.939) indicates a very low false positive rate
+  - Good F1 Score (0.841) shows balanced performance
+  - Data augmentation helped prevent overfitting without architectural changes
+  - Maintained good AUC (0.798) suggesting reliable discrimination ability
+  - Simple to implement as it only required augmentation pipeline changes
 
 - Cons:
+  - Still shows room for improvement in overall accuracy
+  - Limited by the base architecture's capacity
+  - Data augmentation adds computational overhead during training
+  - May not handle extreme variations in face angles/positions
+  - Training time increased due to augmentation processing
 
 
-#### Experiment 2: Enhanced base network with BatchNorm, Dropout, and smaller kernels—Improved - Enhanced_Base
+    #### Experiment 2: Enhanced base network with BatchNorm, Dropout, and smaller kernels—Improved - Enhanced_Base
 **Motivation**: Investigate if 
 
 **Changes**:
@@ -203,31 +214,87 @@ Base Training Parameters:
 
 **Analysis**:
 - Pros:
+  - Best accuracy (0.84) among all experiments
+  - Highest F1 Score (0.912) indicating excellent overall performance
+  - Architectural improvements provided better feature extraction
+  - Better handling of training stability with BatchNorm
+  - Reduced risk of overfitting through Dropout layers
+  - Smaller kernels captured more fine-grained facial features
 
 - Cons:
+  - Lower AUC (0.566) suggests potential issues with the decision boundary
+  - More complex architecture requires more computational resources
+  - Increased number of parameters to train
+  - More hyperparameters to tune (dropout rates, batch norm parameters)
+  - May require larger batch sizes for stable batch normalization
+
 
 ### 4.3 Comparative Analysis
 
 #### Performance Comparison
-| Experiment | Accuracy | F1 Score | AUC   | 
-|------------|----------|----------|-------|
-| Baseline   | 0.754    | 0.838    | 0.838 | 
-| Base_Aug   | 0.791    | 0.865    | 0.798 |
-| Enhanced   | 0.84     | 0.912    | 0.566 |
+| Experiment    | Accuracy | F1 Score | AUC   | 
+|---------------|----------|----------|-------|
+| Baseline      | 0.754    | 0.838    | 0.838 | 
+| Base_with_Aug | 0.791    | 0.865    | 0.798 |
+| Enhanced_Base | 0.84     | 0.912    | 0.566 |
 
 
 
 
 ## 5. False Analysis
 ### 5.1 Error Patterns
-- Move content from "4.3 Error Analysis"
-- Analysis of misclassified examples
-- Visualizations of failure cases
+
+#### False Positive Analysis
+1. **Common Characteristics**:
+   - Similar facial features between different individuals
+   - Similar lighting and pose conditions
+   - Common facial attributes (based on dataset characteristics)
+
+2. **Challenging Scenarios**:
+   - Similar facial structures
+   - Consistent imaging conditions
+   - Similar demographic characteristics
+
+#### False Negative Analysis
+1. **Major Contributing Factors**:
+   - Variations in pose
+   - Lighting differences
+   - Expression changes
+   - Image quality variations
 
 ### 5.2 Performance Analysis
-- Detailed metrics analysis
-- Understanding model weaknesses
-- Solutions implemented to address issues
+
+#### Metric Analysis
+1. **Enhanced Base Model Performance**:
+   - Accuracy: 0.84
+     - 4.9% improvement over Base_Aug
+     - 8.6% improvement over baseline
+   - F1 Score: 0.912
+     - Indicates strong balance of precision and recall
+   - AUC: 0.566
+     - Lower than other models, suggesting decision boundary issues
+
+2. **Model Strengths**:
+   - Improved feature extraction (evidenced by higher F1 score)
+   - Better handling of variations (shown by accuracy improvement)
+   - More robust architecture with BatchNorm and Dropout
+
+3. **Model Weaknesses**:
+   - Decision boundary optimization needed (shown by AUC)
+   - Potential overfitting risks (complex architecture)
+   - Computational overhead from additional layers
+
+#### Performance Improvement Strategies
+1. **Architectural Considerations**:
+   - Evaluate BatchNorm impact
+   - Optimize dropout rates
+   - Consider architectural simplification
+
+2. **Training Optimizations**:
+   - Decision boundary tuning
+   - Learning rate adjustment
+   - Batch size optimization
+
 
 #### Experiment: Hyperparameter Optimization
 **Motivation**: Find optimal learning parameters for faster convergence
