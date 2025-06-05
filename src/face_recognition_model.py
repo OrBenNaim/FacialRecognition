@@ -297,9 +297,9 @@ class ImprovedBaseNetwork(nn.Module):
 
         # FC layers with dropout
         self.fc1 = nn.Linear(self.flatten_size, 4096)
-        self.dropout1 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(0.2)
         self.fc2 = nn.Linear(4096, 4096)
-        self.dropout2 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.1)
 
         self._initialize_weights()
 
