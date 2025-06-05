@@ -175,6 +175,9 @@ Base Training Parameters:
   - F1 Score: 0.841
   - Precision: 0.939
 
+- Training Times: 72.8 sec (1.2 minutes)
+- Convergence times: 29.5 sec
+
 **Analysis**:
 - Pros:
   - Significant improvement in accuracy (0.791) compared to baseline (0.754)
@@ -211,6 +214,9 @@ Base Training Parameters:
   - F1 Score: 0.912
   - Precision: 0.86
 
+- Training Times: 134.8 sec (2.2 minutes)
+- Convergence times: 22.5 sec
+
 **Analysis**:
 - Pros:
   - Best accuracy (0.84) among all experiments
@@ -231,11 +237,11 @@ Base Training Parameters:
 ### 4.3 Comparative Analysis
 
 #### Performance Comparison
-| Experiment    | Accuracy | F1 Score | AUC   | 
-|---------------|----------|----------|-------|
-| Baseline      | 0.754    | 0.838    | 0.838 | 
-| Base_with_Aug | 0.791    | 0.865    | 0.798 |
-| Enhanced_Base | 0.84     | 0.912    | 0.566 |
+| Experiment    | Accuracy | F1 Score | AUC   | Conv. Time (min) | Training Time (min) |
+|---------------|----------|----------|-------|------------------|---------------------|
+| Baseline      | 0.754    | 0.838    | 0.838 | 0.36             | 1                   |
+| Base_with_Aug | 0.791    | 0.865    | 0.798 | 0.49             | 1.2                 |
+| Enhanced_Base | 0.84     | 0.912    | 0.566 | 0.375            | 2.2                 |
 
 
 
@@ -269,19 +275,19 @@ Base Training Parameters:
      - 4.9% improvement over Base_Aug
      - 8.6% improvement over baseline
    - F1 Score: 0.912
-     - Indicates strong balance of precision and recall
+     - Indicates a strong balance of precision and recall
    - AUC: 0.566
      - Lower than other models, suggesting decision boundary issues
 
 2. **Model Strengths**:
-   - Improved feature extraction (evidenced by higher F1 score)
+   - Improved feature extraction (evidenced by a higher F1 score)
    - Better handling of variations (shown by accuracy improvement)
    - More robust architecture with BatchNorm and Dropout
 
 3. **Model Weaknesses**:
-   - Decision boundary optimization needed (shown by AUC)
+   - Decision boundary optimization is needed (shown by AUC)
    - Potential overfitting risks (complex architecture)
-   - Computational overhead from additional layers
+   - Computational overhead with additional layers
 
 #### Performance Improvement Strategies
 1. **Architectural Considerations**:
