@@ -1,5 +1,6 @@
 # Standard library imports
 import os
+import time
 import warnings
 from typing import Tuple, Optional, Any, Set  # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
@@ -469,8 +470,8 @@ class FaceRecognition:
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
 
-        # Add text logging capabilities
-        self.experiment_start_time = None
+        self.start_time = None
+        self.convergence_results = {}
 
         # Initialize data storage for training + validation set
         self.train_val_person_images: Optional[Dict[str, List[str]]] = None
@@ -542,10 +543,6 @@ class FaceRecognition:
         self.optimizer: Optional[optim.Adam] = None
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
-
-        # Add text logging capabilities
-        self.experiment_start_time = None
-
 
     # Load training and test datasets
     def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float) -> None:
@@ -1130,6 +1127,8 @@ class FaceRecognition:
         # Minimal console output for essential info
         print("\n🚀 Starting Training...")
 
+        self.start_time = time.time()
+
         if self.model is None:
             self.create_siamese_network()
 
@@ -1147,6 +1146,8 @@ class FaceRecognition:
         best_val_loss = float('inf')
         patience_counter = 0
         patience = EARLY_STOPPING_PATIENCE
+        best_epoch = 0  # track the best epoch
+        convergence_time = 0.0
 
         print(f"📊 Training for up to {self.epochs} epochs. Monitor progress in TensorBoard!")
         print(f"🔗 TensorBoard: tensorboard --logdir={self.tensorboard_log_dir}")
@@ -1227,6 +1228,11 @@ class FaceRecognition:
                 patience_counter = 0
                 torch.save(self.model.state_dict(), 'best_model.pth')
                 status = "✓ Best"
+
+                # record convergence time
+                best_epoch = epoch + 1
+                convergence_time = time.time() - self.start_time
+
             else:
                 patience_counter += 1
                 status = f"Wait {patience_counter}/{patience}"
@@ -1242,6 +1248,27 @@ class FaceRecognition:
                 self.writer.add_text('Training/EarlyStop', early_stop_text, epoch)
                 print(f"⏹️  {early_stop_text}")
                 break
+
+        # save convergence results
+        total_time = time.time() - self.start_time
+
+        # FIXED: Handle case where no improvement was found
+        if best_epoch == 0:
+            # If no improvement, use the final epoch as a convergence point
+            best_epoch = len(history['train_loss'])
+            convergence_time = total_time
+
+        self.convergence_results = {
+            'convergence_epoch': best_epoch,
+            'convergence_time_seconds': convergence_time,
+            'total_training_time_seconds': total_time,
+            'convergence_time_minutes': convergence_time / 60,
+            'total_training_time_minutes': total_time / 60
+        }
+
+        # Print simple results
+        print(f"\n⏱️  Training completed in {total_time:.1f}s ({total_time / 60:.1f} minutes)")
+        print(f"📈 Best model at epoch {best_epoch} (converged in {convergence_time:.1f}s)")
 
         # Log hyperparameters
         hparam_dict = {
@@ -1260,7 +1287,7 @@ class FaceRecognition:
 
         self.writer.add_hparams(hparam_dict, metric_dict)
 
-        print("✅ Training completed! Check TensorBoard for detailed results.")
+        print("\n✅ Training completed! Check TensorBoard for detailed results.")
         return history
 
     def calculate_detailed_metrics(self, pairs: np.ndarray, pair_labels: np.ndarray) -> Dict[str, float]:
