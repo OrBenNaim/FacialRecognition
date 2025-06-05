@@ -191,8 +191,7 @@ Base Training Parameters:
   - May not handle extreme variations in face angles/positions
   - Training time increased due to augmentation processing
 
-
-    #### Experiment 2: Enhanced base network with BatchNorm, Dropout, and smaller kernels—Improved - Enhanced_Base
+#### Experiment 2: Enhanced base network with BatchNorm, Dropout, and smaller kernels—Improved - Enhanced_Base
 **Motivation**: Investigate if 
 
 **Changes**:
@@ -208,9 +207,9 @@ Base Training Parameters:
 
 **Results**:
 - Key Metrics:
-  - Accuracy: 
-  - F1 Score: 
-  - Precision: 
+  - Accuracy: 0.84
+  - F1 Score: 0.912
+  - Precision: 0.86
 
 **Analysis**:
 - Pros:
