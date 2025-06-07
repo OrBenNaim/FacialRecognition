@@ -18,7 +18,7 @@ This implementation is based on several key works:
 
 ### 1.3 Approach Overview
 Our solution uses a Siamese Neural Network architecture that:
-- Learns to extract meaningful features from face images
+- Learn to extract meaningful features from face images
 - Computes similarity between pairs of faces
 - Makes verification decisions based on learned similarities
 - Requires only one reference image per person
@@ -54,10 +54,10 @@ Key characteristics:
 
 #### Data Distribution Patterns
 1. Person-wise Distribution:
-   - 62.3% of people have only 1 image
-   - 24.7% have 2 images
-   - 8.4% have 3 images
-   - 4.6% have 4 or more images
+   - 62.3% of people have only one image
+   - 24.7% have two images
+   - 8.4% have three images
+   - 4.6% have four or more images
 
 2. Challenging Aspects:
    - Highly imbalanced distribution
@@ -175,6 +175,9 @@ Base Training Parameters:
   - F1 Score: 0.841
   - Precision: 0.939
 
+- Training Times: 72.8 sec (1.2 minutes)
+- Convergence times: 29.5 sec
+
 **Analysis**:
 - Pros:
   - Significant improvement in accuracy (0.791) compared to baseline (0.754)
@@ -211,6 +214,9 @@ Base Training Parameters:
   - F1 Score: 0.912
   - Precision: 0.86
 
+- Training Times: 134.8 sec (2.2 minutes)
+- Convergence times: 22.5 sec
+
 **Analysis**:
 - Pros:
   - Best accuracy (0.84) among all experiments
@@ -225,106 +231,217 @@ Base Training Parameters:
   - More complex architecture requires more computational resources
   - Increased number of parameters to train
   - More hyperparameters to tune (dropout rates, batch norm parameters)
-  - May require larger batch sizes for stable batch normalization
+  - It May require larger batch sizes for stable batch normalization
 
 
 ### 4.3 Comparative Analysis
 
 #### Performance Comparison
-| Experiment    | Accuracy | F1 Score | AUC   | 
-|---------------|----------|----------|-------|
-| Baseline      | 0.754    | 0.838    | 0.838 | 
-| Base_with_Aug | 0.791    | 0.865    | 0.798 |
-| Enhanced_Base | 0.84     | 0.912    | 0.566 |
+| Experiment    | Accuracy | F1 Score | AUC   | Conv. Time (min) | Training Time (min) |
+|---------------|----------|----------|-------|------------------|---------------------|
+| Baseline      | 0.754    | 0.838    | 0.838 | 0.36             | 1                   |
+| Base_with_Aug | 0.791    | 0.865    | 0.798 | 0.49             | 1.2                 |
+| Enhanced_Base | 0.84     | 0.912    | 0.566 | 0.375            | 2.2                 |
 
 
 
 
 ## 5. False Analysis
-### 5.1 Error Patterns
+### 5.1 Performance Overview
 
-#### False Positive Analysis
-1. **Common Characteristics**:
-   - Similar facial features between different individuals
-   - Similar lighting and pose conditions
-   - Common facial attributes (based on dataset characteristics)
+The Enhanced Base model achieved **84.02% accuracy** with an F1 score of **0.9128**. However, a closer look reveals significant issues with the model's behavior.
 
-2. **Challenging Scenarios**:
-   - Similar facial structures
-   - Consistent imaging conditions
-   - Similar demographic characteristics
+#### 5.1.1 Key Performance Metrics
+- **Overall Accuracy**: 84.02%
+- **F1 Score**: 0.9128
+- **AUC**: 0.566 (concerning - barely better than random)
+- **True Positive Rate**: 99.51% (too high)
+- **True Negative Rate**: 2.56% (too low)
 
-#### False Negative Analysis
-1. **Major Contributing Factors**:
-   - Variations in pose
-   - Lighting differences
-   - Expression changes
-   - Image quality variations
+#### 5.1.2 The Main Problem: Prediction Bias
+The model has a severe bias— it predicts "same person" for almost everything:
+- Correctly identifies 99.51% of actual same-person pairs
+- Only correctly identifies 2.56% of different-person pairs
+- This means it's saying "same person" for 97% of all pairs
 
-### 5.2 Performance Analysis
+### 5.2 Training Behavior Analysis
 
-#### Metric Analysis
-1. **Enhanced Base Model Performance**:
-   - Accuracy: 0.84
-     - 4.9% improvement over Base_Aug
-     - 8.6% improvement over baseline
-   - F1 Score: 0.912
-     - Indicates strong balance of precision and recall
-   - AUC: 0.566
-     - Lower than other models, suggesting decision boundary issues
+#### 5.2.1 Loss Patterns
+- **Training Loss**: Stable around 0.75, gradually improving
+- **Validation Loss**: Very unstable with many ups and downs
+![Model Loss Over Time](images/loss_over_time.png)
 
-2. **Model Strengths**:
-   - Improved feature extraction (evidenced by higher F1 score)
-   - Better handling of variations (shown by accuracy improvement)
-   - More robust architecture with BatchNorm and Dropout
+The unstable validation loss suggests the model is having trouble generalizing.
 
-3. **Model Weaknesses**:
-   - Decision boundary optimization needed (shown by AUC)
-   - Potential overfitting risks (complex architecture)
-   - Computational overhead from additional layers
+#### 5.2.2 Accuracy Patterns
+- **Training Accuracy**: Stayed low (~53%) throughout training
+- **Validation Accuracy**: Highly variable (68–85%)
+![Model Accuracy Over Time](images/accuracy_over_time.png)
 
-#### Performance Improvement Strategies
-1. **Architectural Considerations**:
-   - Evaluate BatchNorm impact
-   - Optimize dropout rates
-   - Consider architectural simplification
+**Strange Finding**: Training accuracy is much lower than validation accuracy—this is unusual and suggests potential issues with data or evaluation.
 
-2. **Training Optimizations**:
-   - Decision boundary tuning
-   - Learning rate adjustment
-   - Batch size optimization
+### 5.3 Error Pattern Analysis
 
+#### 5.3.1 False Positives (Main Problem)
+- **Rate**: 40.98% of examined pairs were misclassified
+- **Pattern**: Model incorrectly says "same person" for different people
 
-#### Experiment: Hyperparameter Optimization
-**Motivation**: Find optimal learning parameters for faster convergence
+**Common Mistakes**:
+1. **Similar Demographics**: Confuses people of the same age, gender, or ethnicity
+2. **Similar Photo Conditions**: Same lighting, image quality, or pose
+3. **Similar Accessories**: People wearing glasses or similar hairstyles
+4. **Similar Facial Structure**: People with similar face shapes
 
-**Configurations Tested**:
-1. Learning Rate Variations:
-   ```python
-   configurations = [
-       {"lr": 6e-5, "batch_size": 32, "epochs": 50},
-       {"lr": 3e-5, "batch_size": 64, "epochs": 50},
-       {"lr": 1e-4, "batch_size": 32, "epochs": 50}
-   ]
-   ```
+**Examples from Results**:
+- Two different Asian men with similar facial structure
+- Different elderly women with similar appearance
+- People wearing glasses (model seems to focus on glasses)
 
-2. Batch Size Impact:
-   - Tested: 16, 32, 64, 128
-   - Best performing: X
-   - Memory usage vs. performance trade-offs
+#### 5.3.2 False Negatives (Rare)
+- **Rate**: Very low (~0.49%) due to the model's bias
+- **When it happens**: Extreme lighting changes, very different expressions, or significant age differences between photos of the same person
+
+### 5.4. Why This Happened
+
+#### 5.4.1 Decision Boundary Problem
+The model learned the wrong threshold.
+Instead of learning when faces are truly similar, it learned to say "same person" in most cases because:
+- This gives high accuracy if most pairs in the dataset are positive
+- The AUC of 0.566 shows it can barely distinguish between classes
+
+#### 5.4.2 Possible Root Causes
+1. **Data Imbalance**: Too many "same person" pairs in training
+2. **Architecture Issues**: BatchNorm and Dropout might be causing instability
+3. **Wrong Threshold**: Using 0.5 threshold when the model needs higher (0.7–0.8)
+4. **Learning Rate**: Might be too low for this architecture
+
+### 5.5 What We Learned
+
+#### 5.5.1 Main Insights
+1. **High accuracy can be misleading** when there's a class imbalance
+2. **AUC is more honest—**shows the model barely works better than random
+3. **Visual inspection of failures** reveals the model focuses on superficial similarities
+4. **Training curves** can reveal problems even when final metrics look good
+
+#### 5.5.2 Model Limitations
+- Cannot handle demographic similarities well
+- Over-relies on image conditions rather than facial features
+- The Threshold is poorly calibrated
+- Training instability suggests architectural problems
+
+### 5.6 Planned Improvements
+
+#### 5.6.1 Immediate Fixes
+- Test different classification thresholds (0.7, 0.8, 0.9)
+- Reduce dropout rates from 0.5/0.3 to 0.2/0.1
+- Implement weighted BCE
+
+##### 5.6.1.1 Classification threshold Optimization
+
+**Problem Identified**: The default threshold of 0.5 is inappropriate for our biased model, causing 97% "same person" predictions.
+
+**Solution Implemented**:
+We systematically tested different classification thresholds to find the optimal balance between True Positive Rate and True Negative Rate.
+
+**Experimental Setup**:
+```
+Thresholds tested: [0.3, 0.5, 0.7]
+Dataset: Validation set (same pairs used in original analysis)
+```
 
 **Results**:
-| Configuration | Val Accuracy | Training Time | Convergence |
-|--------------|--------------|---------------|-------------|
-| Config 1     | X%           | X hours       | Epoch X     |
-| Config 2     | X%           | X hours       | Epoch X     |
-| Config 3     | X%           | X hours       | Epoch X     |
 
-**Analysis**:
-- Optimal configuration found: {...}
-- Trade-offs observed
-- Impact on model stability
+| Threshold | Accuracy | TPR       | TNR      | F1 Score |
+|-----------|----------|-----------|----------|----------|
+| 0.3       | 0.8402   | 1         | 0        | 0.9131   |
+| 0.5       | 0.8402   | 0.9951    | 0.0256   | 0.9128   |
+| 0.7       | 0.1595   | 0         | 0        | 0        |
 
+
+**Optimal Threshold**: No optimal threshold found
+**Reasoning**: Testing revealed outputs clustered in narrow range (0.3–0.7), indicating architectural issues rather than threshold problems.
+
+**Impact Analysis**:
+- **Before**: TPR=99.51%, TNR=2.56%, Balanced Accuracy=51.04%
+- **After Threshold 0.7**: TPR=0%, TNR=100%, Balanced Accuracy=50%
+- **After Threshold 0.3**: TPR=100%, TNR=0%, Balanced Accuracy=50%
+- **Conclusion**: Threshold changes cannot fix poor discriminative power
+
+
+##### 5.6.1.2 Reduce dropout rates from 0.5/0.3 to 0.2/0.1
+**Problem Identified:** Current dropout rates (0.5, 0.3) may be too aggressive,
+potentially contributing to poor calibration 
+and training instability observed in validation loss curves.
+
+**Hypothesis:** Reducing dropout rates will allow better information flow while maintaining regularization benefits, potentially improving model calibration.
+
+**Experimental Setup:**
+```
+Architecture: Enhanced Base (ImprovedSiameseNetwork)
+Learning rate: 6e-5
+Batch size: 32
+Epochs: 50
+Only dropout rates modified
+```
+**Results**:
+
+| Configuration       | Accuracy | TPR    | TNR    | Balanced Acc | F1 Score | Precision | Model Behavior           |
+|---------------------|----------|--------|--------|--------------|----------|-----------|--------------------------|
+| Original (0.5, 0.3) | 84.02%   | 99.51% | 2.56%  | 51.04%       | 0.913    | 86.07%    | Extreme "same" bias      |
+| Reduced (0.2, 0.1)  | 59.84%   | 55.61% | 82.05% | **68.83%**   | 0.699    | 92.86%    | **Balanced performance** |
+
+**Impact Analysis:** 
+- **Dramatic improvement in balanced accuracy (+17.79%)** demonstrates that excessive dropout was preventing proper model calibration
+- **TNR increased by 79.49%** - model now correctly identifies different-person pairs  
+- **More realistic TPR (55.61%)** shows the model learned to be appropriately selective
+- **Higher precision (92.86%)** indicates fewer false positives
+- **Trade-off**: Overall accuracy decreased but this reflects honest performance rather than biased predictions
+
+**Key Finding**: Dropout reduction was the most effective single architectural change, proving that over-regularization was the primary cause of poor discriminative ability.
+
+
+##### 5.6.1.3 weighted BCE
+**Problem Identified:** The prediction bias may stem from class imbalance in training data.
+
+**Solution Tested:** Weighted Binary Cross-Entropy Loss to give more importance to the minority class.
+
+**Class Distribution Analysis:**
+- Positive pairs (same person): 895 (56%)
+- Negative pairs (different person): 704 (44%)
+- Imbalance ratio: 1.27:1 (27% imbalance)
+- Calculated pos_weight: 0.787
+
+**Implementation:**
+```python
+pos_weight = negative_pairs / positive_pairs
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]))
+```
+**Results**:
+
+| Configuration                  | Accuracy  | TPR    | TNR    | Balanced Acc | F1 Score |
+|--------------------------------|-----------|--------|--------|--------------|----------|
+| Reduced Dropout Only           | 0.5984    | 0.5561 | 0.8205 | 0.6883       | 0.699    |
+| Weighted BCE + Reduced Dropout | 0.4590    | 0.3648 | 0.9487 | 0.6567       | 0.5319   |
+
+**Impact**: [DESCRIBE_CHANGE_IN_PERFORMANCE]
+
+**Conclusion**: Weighted BCE [SUCCESSFUL_OR_NOT] provided additional improvement over dropout reduction alone.
+
+
+#### 5.6.2 Architecture Changes
+- Experiment with larger batch sizes (64, 128) for BatchNorm stability
+- Consider removing BatchNorm layers if instability persists
+
+
+### 5.7 Conclusions
+
+The model's 84% accuracy is misleading. The real story is:
+- **Severe prediction bias** toward "same person"
+- **Poor discrimination ability** (AUC ≈ random chance)
+- **Superficial feature learning** rather than true face recognition
+- **Training instability** needs to be addressed
+
+This analysis shows why multiple metrics are essential for model evaluation and highlights the importance of examining failure cases to understand model behavior.
 
 ## 6. Takeaways
 ### 6.1 Conclusions

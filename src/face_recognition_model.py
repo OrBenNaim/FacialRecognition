@@ -1,5 +1,6 @@
 # Standard library imports
 import os
+import time
 import warnings
 from typing import Tuple, Optional, Any, Set  # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
@@ -249,6 +250,7 @@ class BaseNetwork(nn.Module):
 
         return x
 
+
 class ImprovedBaseNetwork(nn.Module):
     """
     Enhanced base network with BatchNorm, Dropout, and smaller kernels
@@ -261,8 +263,8 @@ class ImprovedBaseNetwork(nn.Module):
         # Layer 1: First convolutional block
         # Input: (input_shape) -> Output: (NUM_OF_FILTERS_LAYER1 feature maps)
         self.conv1 = nn.Conv2d(
-            in_channels=input_shape[2],     # Number of input channels (1 for grayscale),
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],     # Number of output feature maps
+            in_channels=input_shape[2],  # Number of input channels (1 for grayscale),
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],  # Number of output feature maps
             kernel_size=IMPROVED_KERNEL_SIZES['layer1'],
             padding=2)
         self.bn1 = nn.BatchNorm2d(64)
@@ -296,9 +298,9 @@ class ImprovedBaseNetwork(nn.Module):
 
         # FC layers with dropout
         self.fc1 = nn.Linear(self.flatten_size, 4096)
-        self.dropout1 = nn.Dropout(0.5)
+        self.dropout1 = nn.Dropout(0.2)
         self.fc2 = nn.Linear(4096, 4096)
-        self.dropout2 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.1)
 
         self._initialize_weights()
 
@@ -469,8 +471,8 @@ class FaceRecognition:
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
 
-        # Add text logging capabilities
-        self.experiment_start_time = None
+        self.start_time = None
+        self.convergence_results = {}
 
         # Initialize data storage for training + validation set
         self.train_val_person_images: Optional[Dict[str, List[str]]] = None
@@ -542,10 +544,6 @@ class FaceRecognition:
         self.optimizer: Optional[optim.Adam] = None
         self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
-
-        # Add text logging capabilities
-        self.experiment_start_time = None
-
 
     # Load training and test datasets
     def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float) -> None:
@@ -804,6 +802,7 @@ class FaceRecognition:
             self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
                                                                             image_dict=temp_image_dict,
                                                                             allowed_people=set(self.train_people_names))
+
             # Create validation pairs from the dataset
             self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
                                                                         image_dict=temp_image_dict,
@@ -852,7 +851,7 @@ class FaceRecognition:
             self.model = SiameseNetwork(self.input_shape).to(device)
             print("Using base architecture\n")
 
-            # Create optimizer (keep existing code)
+        # Create optimizer (keep existing code)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         # Print model info (keep existing code)
@@ -961,12 +960,12 @@ class FaceRecognition:
 
         # Log model graph
         try:
-            # Create fake input with correct shape (batch_size, channels, height, width)
+            # Create fake input with the correct shape (batch_size, channels, height, width)
             sample_input_1 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
             sample_input_2 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
 
             # Wrap inputs in a list instead of passing as separate arguments
-            self.writer.add_graph(self.model,[sample_input_1, sample_input_2])  # Pass as a list of tensors
+            self.writer.add_graph(self.model, [sample_input_1, sample_input_2])  # Pass as a list of tensors
 
         except Exception as e:
             self.writer.add_text('Model/graph_error', f"Could not log model graph: {e}", 0)
@@ -1034,8 +1033,8 @@ class FaceRecognition:
         self.writer.add_text('Final_Results/Summary', final_summary, 0)
 
     def find_misclassified_examples(self, pairs: np.ndarray,
-                                                  pair_labels: np.ndarray,
-                                                  num_examples: int = 10) -> None:
+                                    pair_labels: np.ndarray,
+                                    num_examples: int = 10) -> None:
         """
         This function processes image pairs through the Siamese network and identifies cases where
         the model's predictions differ from the true labels. It performs the following tasks:
@@ -1130,6 +1129,8 @@ class FaceRecognition:
         # Minimal console output for essential info
         print("\n🚀 Starting Training...")
 
+        self.start_time = time.time()
+
         if self.model is None:
             self.create_siamese_network()
 
@@ -1147,6 +1148,8 @@ class FaceRecognition:
         best_val_loss = float('inf')
         patience_counter = 0
         patience = EARLY_STOPPING_PATIENCE
+        best_epoch = 0  # track the best epoch
+        convergence_time = 0.0
 
         print(f"📊 Training for up to {self.epochs} epochs. Monitor progress in TensorBoard!")
         print(f"🔗 TensorBoard: tensorboard --logdir={self.tensorboard_log_dir}")
@@ -1227,6 +1230,11 @@ class FaceRecognition:
                 patience_counter = 0
                 torch.save(self.model.state_dict(), 'best_model.pth')
                 status = "✓ Best"
+
+                # record convergence time
+                best_epoch = epoch + 1
+                convergence_time = time.time() - self.start_time
+
             else:
                 patience_counter += 1
                 status = f"Wait {patience_counter}/{patience}"
@@ -1242,6 +1250,27 @@ class FaceRecognition:
                 self.writer.add_text('Training/EarlyStop', early_stop_text, epoch)
                 print(f"⏹️  {early_stop_text}")
                 break
+
+        # save convergence results
+        total_time = time.time() - self.start_time
+
+        # Handle case where no improvement was found
+        if best_epoch == 0:
+            # If no improvement, use the final epoch as a convergence point
+            best_epoch = len(history['train_loss'])
+            convergence_time = total_time
+
+        self.convergence_results = {
+            'convergence_epoch': best_epoch,
+            'convergence_time_seconds': convergence_time,
+            'total_training_time_seconds': total_time,
+            'convergence_time_minutes': convergence_time / 60,
+            'total_training_time_minutes': total_time / 60
+        }
+
+        # Print simple results
+        print(f"\n⏱️  Training completed in {total_time:.1f}s ({total_time / 60:.1f} minutes)")
+        print(f"📈 Best model at epoch {best_epoch} (converged in {convergence_time:.1f}s)")
 
         # Log hyperparameters
         hparam_dict = {
@@ -1260,7 +1289,7 @@ class FaceRecognition:
 
         self.writer.add_hparams(hparam_dict, metric_dict)
 
-        print("✅ Training completed! Check TensorBoard for detailed results.")
+        print("\n✅ Training completed! Check TensorBoard for detailed results.")
         return history
 
     def calculate_detailed_metrics(self, pairs: np.ndarray, pair_labels: np.ndarray) -> Dict[str, float]:
