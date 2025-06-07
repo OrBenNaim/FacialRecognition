@@ -2,8 +2,7 @@ import os
 
 from torch.utils.tensorboard import SummaryWriter
 
-from src.constants import OPTIMIZED_IMG_SHAPE, DATA_FOLDER_PATH, TRAIN_FILE_PATH, VALIDATION_SPLIT, \
-    CLASSIFICATION_THRESHOLD
+from src.constants import OPTIMIZED_IMG_SHAPE, DATA_FOLDER_PATH, TRAIN_FILE_PATH, VALIDATION_SPLIT
 from src.face_recognition_model import FaceRecognition
 
 if __name__ == '__main__':
