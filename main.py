@@ -61,7 +61,6 @@ if __name__ == '__main__':
     #
     #     print(f"\n✅ Completed {model.experiment_name}")
 
-
     #============ Decided to move on with 'Enhanced base network' ============
 
     # Run multiple experiments
@@ -78,7 +77,7 @@ if __name__ == '__main__':
         batch_size = exp["batch_size"]
         epochs = exp["epochs"]
 
-        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_dropout_reduced"
+        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_dropout_reduced_weighted_BCE"
 
         use_improved_arch = None
 
@@ -93,4 +92,4 @@ if __name__ == '__main__':
         model.run_complete_experiment(learning_rate=learning_rate, batch_size=batch_size, epochs=epochs,
                                       use_improved_arch=use_improved_arch, exp_name=exp_name)
 
-        print(f"\n✅ Completed {model.experiment_name} with CLASSIFICATION_THRESHOLD {CLASSIFICATION_THRESHOLD}")
+        print(f"\n✅ Completed {model.experiment_name}")

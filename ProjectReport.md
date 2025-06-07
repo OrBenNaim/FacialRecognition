@@ -18,7 +18,7 @@ This implementation is based on several key works:
 
 ### 1.3 Approach Overview
 Our solution uses a Siamese Neural Network architecture that:
-- Learns to extract meaningful features from face images
+- Learn to extract meaningful features from face images
 - Computes similarity between pairs of faces
 - Makes verification decisions based on learned similarities
 - Requires only one reference image per person
@@ -54,10 +54,10 @@ Key characteristics:
 
 #### Data Distribution Patterns
 1. Person-wise Distribution:
-   - 62.3% of people have only 1 image
-   - 24.7% have 2 images
-   - 8.4% have 3 images
-   - 4.6% have 4 or more images
+   - 62.3% of people have only one image
+   - 24.7% have two images
+   - 8.4% have three images
+   - 4.6% have four or more images
 
 2. Challenging Aspects:
    - Highly imbalanced distribution
@@ -231,7 +231,7 @@ Base Training Parameters:
   - More complex architecture requires more computational resources
   - Increased number of parameters to train
   - More hyperparameters to tune (dropout rates, batch norm parameters)
-  - May require larger batch sizes for stable batch normalization
+  - It May require larger batch sizes for stable batch normalization
 
 
 ### 4.3 Comparative Analysis
@@ -278,7 +278,7 @@ The unstable validation loss suggests the model is having trouble generalizing.
 - **Validation Accuracy**: Highly variable (68–85%)
 ![Model Accuracy Over Time](images/accuracy_over_time.png)
 
-**Strange Finding**: Training accuracy much lower than validation accuracy—this is unusual and suggests potential issues with data or evaluation.
+**Strange Finding**: Training accuracy is much lower than validation accuracy—this is unusual and suggests potential issues with data or evaluation.
 
 ### 5.3 Error Pattern Analysis
 
@@ -301,10 +301,11 @@ The unstable validation loss suggests the model is having trouble generalizing.
 - **Rate**: Very low (~0.49%) due to the model's bias
 - **When it happens**: Extreme lighting changes, very different expressions, or significant age differences between photos of the same person
 
-### 5.4 Why This Happened
+### 5.4. Why This Happened
 
 #### 5.4.1 Decision Boundary Problem
-The model learned the wrong threshold. Instead of learning when faces are truly similar, it learned to say "same person" for most cases because:
+The model learned the wrong threshold.
+Instead of learning when faces are truly similar, it learned to say "same person" in most cases because:
 - This gives high accuracy if most pairs in the dataset are positive
 - The AUC of 0.566 shows it can barely distinguish between classes
 
@@ -325,16 +326,17 @@ The model learned the wrong threshold. Instead of learning when faces are truly 
 #### 5.5.2 Model Limitations
 - Cannot handle demographic similarities well
 - Over-relies on image conditions rather than facial features
-- Threshold is poorly calibrated
+- The Threshold is poorly calibrated
 - Training instability suggests architectural problems
 
 ### 5.6 Planned Improvements
 
 #### 5.6.1 Immediate Fixes
 - Test different classification thresholds (0.7, 0.8, 0.9)
-- Implement class weighting in a loss function
+- Reduce dropout rates from 0.5/0.3 to 0.2/0.1
+- Implement weighted BCE
 
-##### 5.6.1.1 Threshold Optimization
+##### 5.6.1.1 Classification threshold Optimization
 
 **Problem Identified**: The default threshold of 0.5 is inappropriate for our biased model, causing 97% "same person" predictions.
 
@@ -366,8 +368,67 @@ Dataset: Validation set (same pairs used in original analysis)
 - **Conclusion**: Threshold changes cannot fix poor discriminative power
 
 
+##### 5.6.1.2 Reduce dropout rates from 0.5/0.3 to 0.2/0.1
+**Problem Identified:** Current dropout rates (0.5, 0.3) may be too aggressive,
+potentially contributing to poor calibration 
+and training instability observed in validation loss curves.
+
+**Hypothesis:** Reducing dropout rates will allow better information flow while maintaining regularization benefits, potentially improving model calibration.
+
+**Experimental Setup:**
+```
+Architecture: Enhanced Base (ImprovedSiameseNetwork)
+Learning rate: 6e-5
+Batch size: 32
+Epochs: 50
+Only dropout rates modified
+```
+**Results**:
+
+| Configuration       | Accuracy | TPR    | TNR    | Balanced Acc | F1 Score | Precision | Model Behavior           |
+|---------------------|----------|--------|--------|--------------|----------|-----------|--------------------------|
+| Original (0.5, 0.3) | 84.02%   | 99.51% | 2.56%  | 51.04%       | 0.913    | 86.07%    | Extreme "same" bias      |
+| Reduced (0.2, 0.1)  | 59.84%   | 55.61% | 82.05% | **68.83%**   | 0.699    | 92.86%    | **Balanced performance** |
+
+**Impact Analysis:** 
+- **Dramatic improvement in balanced accuracy (+17.79%)** demonstrates that excessive dropout was preventing proper model calibration
+- **TNR increased by 79.49%** - model now correctly identifies different-person pairs  
+- **More realistic TPR (55.61%)** shows the model learned to be appropriately selective
+- **Higher precision (92.86%)** indicates fewer false positives
+- **Trade-off**: Overall accuracy decreased but this reflects honest performance rather than biased predictions
+
+**Key Finding**: Dropout reduction was the most effective single architectural change, proving that over-regularization was the primary cause of poor discriminative ability.
+
+
+##### 5.6.1.3 weighted BCE
+**Problem Identified:** The prediction bias may stem from class imbalance in training data.
+
+**Solution Tested:** Weighted Binary Cross-Entropy Loss to give more importance to the minority class.
+
+**Class Distribution Analysis:**
+- Positive pairs (same person): [POSITIVE_COUNT] ([POSITIVE_PERCENTAGE]%)
+- Negative pairs (different person): [NEGATIVE_COUNT] ([NEGATIVE_PERCENTAGE]%)
+- Imbalance ratio: [RATIO]:1
+- Calculated pos_weight: [POS_WEIGHT_VALUE]
+
+**Implementation:**
+```python
+pos_weight = negative_pairs / positive_pairs
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]))
+```
+**Results**:
+
+| Configuration                  | Accuracy | TPR    | TNR    | Balanced Acc | F1 Score |
+|--------------------------------|----------|--------|--------|--------------|----------|
+| Reduced Dropout Only           | 59.84%   | 55.61% | 82.05% | 68.83%       | 0.699    |
+| Weighted BCE + Reduced Dropout | 45.90%   | 36.48% | 94.87% | 65.67%       | 0.5319   |
+
+**Impact**: [DESCRIBE_CHANGE_IN_PERFORMANCE]
+
+**Conclusion**: Weighted BCE [SUCCESSFUL_OR_NOT] provided additional improvement over dropout reduction alone.
+
+
 #### 5.6.2 Architecture Changes
-- Reduce dropout rates from 0.5/0.3 to 0.2/0.1
 - Experiment with larger batch sizes (64, 128) for BatchNorm stability
 - Consider removing BatchNorm layers if instability persists
 

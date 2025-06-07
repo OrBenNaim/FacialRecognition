@@ -250,6 +250,7 @@ class BaseNetwork(nn.Module):
 
         return x
 
+
 class ImprovedBaseNetwork(nn.Module):
     """
     Enhanced base network with BatchNorm, Dropout, and smaller kernels
@@ -262,8 +263,8 @@ class ImprovedBaseNetwork(nn.Module):
         # Layer 1: First convolutional block
         # Input: (input_shape) -> Output: (NUM_OF_FILTERS_LAYER1 feature maps)
         self.conv1 = nn.Conv2d(
-            in_channels=input_shape[2],     # Number of input channels (1 for grayscale),
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],     # Number of output feature maps
+            in_channels=input_shape[2],  # Number of input channels (1 for grayscale),
+            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],  # Number of output feature maps
             kernel_size=IMPROVED_KERNEL_SIZES['layer1'],
             padding=2)
         self.bn1 = nn.BatchNorm2d(64)
@@ -364,7 +365,7 @@ class ImprovedSiameseNetwork(nn.Module):
 
         # Compute L1 distance and predict similarity
         l1_distance = torch.abs(output1 - output2)
-        prediction = torch.sigmoid(self.prediction(l1_distance))
+        prediction = self.prediction(l1_distance)
 
         return prediction
 
@@ -467,7 +468,10 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+
+        # Use weighted BCE (Binary Cross Entropy Loss)
+        self.criterion = None
+
         self.history: Optional[Dict[str, List[float]]] = None
 
         self.start_time = None
@@ -849,7 +853,16 @@ class FaceRecognition:
             self.model = SiameseNetwork(self.input_shape).to(device)
             print("Using base architecture\n")
 
-            # Create optimizer (keep existing code)
+        positive_pairs = np.sum(self.train_pair_labels == 1)
+        negative_pairs = np.sum(self.train_pair_labels == 0)
+        pos_weight = torch.tensor([negative_pairs / positive_pairs]).to(device)
+
+        # Use weighted BCE instead of regular BCE
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        print(f"\nUsing weighted BCE with pos_weight: {pos_weight.item():.3f}")
+        print(f"Class distribution - Positive: {positive_pairs}, Negative: {negative_pairs}\n")
+
+        # Create optimizer (keep existing code)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         # Print model info (keep existing code)
@@ -958,12 +971,12 @@ class FaceRecognition:
 
         # Log model graph
         try:
-            # Create fake input with correct shape (batch_size, channels, height, width)
+            # Create fake input with the correct shape (batch_size, channels, height, width)
             sample_input_1 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
             sample_input_2 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
 
             # Wrap inputs in a list instead of passing as separate arguments
-            self.writer.add_graph(self.model,[sample_input_1, sample_input_2])  # Pass as a list of tensors
+            self.writer.add_graph(self.model, [sample_input_1, sample_input_2])  # Pass as a list of tensors
 
         except Exception as e:
             self.writer.add_text('Model/graph_error', f"Could not log model graph: {e}", 0)
@@ -1031,8 +1044,8 @@ class FaceRecognition:
         self.writer.add_text('Final_Results/Summary', final_summary, 0)
 
     def find_misclassified_examples(self, pairs: np.ndarray,
-                                                  pair_labels: np.ndarray,
-                                                  num_examples: int = 10) -> None:
+                                    pair_labels: np.ndarray,
+                                    num_examples: int = 10) -> None:
         """
         This function processes image pairs through the Siamese network and identifies cases where
         the model's predictions differ from the true labels. It performs the following tasks:
@@ -1388,7 +1401,8 @@ class FaceRecognition:
                     img2 = img2.unsqueeze(1)
 
                 # Get model predictions for this batch
-                outputs = self.model(img1, img2)
+                logits = self.model(img1, img2)  # Now returns logits
+                outputs = torch.sigmoid(logits)  # Convert to probabilities for evaluation
 
                 # Convert predictions and labels to numpy arrays
                 # Move to CPU first if they were on GPU
