@@ -365,7 +365,7 @@ class ImprovedSiameseNetwork(nn.Module):
 
         # Compute L1 distance and predict similarity
         l1_distance = torch.abs(output1 - output2)
-        prediction = self.prediction(l1_distance)
+        prediction = torch.sigmoid(self.prediction(l1_distance))
 
         return prediction
 
@@ -468,10 +468,7 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-
-        # Apply weighted BCE (Binary Cross Entropy Loss) later
-        self.criterion = None
-
+        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
 
         self.start_time = None
@@ -545,7 +542,7 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-        self.criterion = None
+        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
@@ -805,6 +802,7 @@ class FaceRecognition:
             self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
                                                                             image_dict=temp_image_dict,
                                                                             allowed_people=set(self.train_people_names))
+
             # Create validation pairs from the dataset
             self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
                                                                         image_dict=temp_image_dict,
@@ -852,15 +850,6 @@ class FaceRecognition:
             # Use your base architecture
             self.model = SiameseNetwork(self.input_shape).to(device)
             print("Using base architecture\n")
-
-        positive_pairs = np.sum(self.train_pair_labels == 1)
-        negative_pairs = np.sum(self.train_pair_labels == 0)
-        pos_weight = torch.tensor([negative_pairs / positive_pairs]).to(device)
-
-        # Use weighted BCE instead of regular BCE
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        print(f"\nUsing weighted BCE with pos_weight: {pos_weight.item():.3f}")
-        print(f"Class distribution - Positive: {positive_pairs}, Negative: {negative_pairs}\n")
 
         # Create optimizer (keep existing code)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -1265,7 +1254,7 @@ class FaceRecognition:
         # save convergence results
         total_time = time.time() - self.start_time
 
-        # FIXED: Handle case where no improvement was found
+        # Handle case where no improvement was found
         if best_epoch == 0:
             # If no improvement, use the final epoch as a convergence point
             best_epoch = len(history['train_loss'])
@@ -1401,8 +1390,7 @@ class FaceRecognition:
                     img2 = img2.unsqueeze(1)
 
                 # Get model predictions for this batch
-                logits = self.model(img1, img2)  # Now returns logits
-                outputs = torch.sigmoid(logits)  # Convert to probabilities for evaluation
+                outputs = self.model(img1, img2)
 
                 # Convert predictions and labels to numpy arrays
                 # Move to CPU first if they were on GPU
