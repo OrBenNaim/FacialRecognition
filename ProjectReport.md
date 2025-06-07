@@ -406,10 +406,10 @@ Only dropout rates modified
 **Solution Tested:** Weighted Binary Cross-Entropy Loss to give more importance to the minority class.
 
 **Class Distribution Analysis:**
-- Positive pairs (same person): [POSITIVE_COUNT] ([POSITIVE_PERCENTAGE]%)
-- Negative pairs (different person): [NEGATIVE_COUNT] ([NEGATIVE_PERCENTAGE]%)
-- Imbalance ratio: [RATIO]:1
-- Calculated pos_weight: [POS_WEIGHT_VALUE]
+- Positive pairs (same person): 895 (56%)
+- Negative pairs (different person): 704 (44%)
+- Imbalance ratio: 1.27:1 (27% imbalance)
+- Calculated pos_weight: 0.787
 
 **Implementation:**
 ```python
