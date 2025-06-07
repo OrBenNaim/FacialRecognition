@@ -469,7 +469,7 @@ class FaceRecognition:
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
 
-        # Use weighted BCE (Binary Cross Entropy Loss)
+        # Apply weighted BCE (Binary Cross Entropy Loss) later
         self.criterion = None
 
         self.history: Optional[Dict[str, List[float]]] = None
@@ -545,7 +545,7 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+        self.criterion = None
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
