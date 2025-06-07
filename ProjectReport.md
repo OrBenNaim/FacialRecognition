@@ -418,10 +418,10 @@ criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]))
 ```
 **Results**:
 
-| Configuration                  | Accuracy | TPR    | TNR    | Balanced Acc | F1 Score |
-|--------------------------------|----------|--------|--------|--------------|----------|
-| Reduced Dropout Only           | 59.84%   | 55.61% | 82.05% | 68.83%       | 0.699    |
-| Weighted BCE + Reduced Dropout | 45.90%   | 36.48% | 94.87% | 65.67%       | 0.5319   |
+| Configuration                  | Accuracy  | TPR    | TNR    | Balanced Acc | F1 Score |
+|--------------------------------|-----------|--------|--------|--------------|----------|
+| Reduced Dropout Only           | 0.5984    | 0.5561 | 0.8205 | 0.6883       | 0.699    |
+| Weighted BCE + Reduced Dropout | 0.4590    | 0.3648 | 0.9487 | 0.6567       | 0.5319   |
 
 **Impact**: [DESCRIBE_CHANGE_IN_PERFORMANCE]
 
