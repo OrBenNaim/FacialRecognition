@@ -412,19 +412,13 @@ improvements** can overcome architectural limitations within existing model capa
 
 ## 6. Takeaways
 ### 6.1 Conclusions
-- Key findings and insights
-- Main challenges encountered
-- Successful strategies
+
 
 ### 6.2 Future Improvements
-- Suggested architectural improvements
-- Potential data augmentation techniques
-- Training optimization possibilities
+
 
 ### 6.3 Lessons Learned
-- Technical insights gained
-- Best practices discovered
-- What would be done differently
+
 
 ## References
 1. Koch, G., Zemel, R., & Salakhutdinov, R. (2015). Siamese neural networks for one-shot image recognition. ICML deep learning workshop.
