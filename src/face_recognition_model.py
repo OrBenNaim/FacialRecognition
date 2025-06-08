@@ -1472,3 +1472,136 @@ class FaceRecognition:
         print(f"Final Precision: {metrics['average_precision']:.4f}")
         print(f"Final F1 Score: {metrics['f1_score']:.4f}")
         print(f"Final AUC: {metrics['auc']:.4f}")
+
+    def load_best_model(self, model_path: str = "best_model.pth") -> None:
+        """
+        Load the best trained model for testing.
+
+        Args:
+            model_path: Path to the saved model state dict
+        """
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+
+        # Create model architecture
+        self.model = SiameseNetwork(self.input_shape).to(device)
+
+        # Load trained weights
+        self.model.load_state_dict(torch.load(model_path, map_location=device))
+        self.model.eval()  # Set to evaluation mode
+
+        # Set default batch size for evaluation
+        self.batch_size = 32
+
+        print(f"✅ Loaded model from {model_path}")
+
+    def run_test_evaluation(self) -> Dict[str, float]:
+        """
+        Run comprehensive evaluation on test dataset.
+
+        Returns:
+            Dictionary containing all test metrics
+        """
+        print("🔍 Evaluating on test dataset...")
+
+        # Calculate detailed metrics
+        test_metrics = self.calculate_detailed_metrics(self.test_pairs, self.test_pair_labels)
+
+        # Get additional metrics
+        accuracy, predictions, gt_labels = self.evaluate_verification(self.test_pairs, self.test_pair_labels)
+
+        # Calculate TPR and TNR
+        pred_labels = (predictions > CLASSIFICATION_THRESHOLD).astype(int).flatten()
+        positive_mask = gt_labels == 1
+        negative_mask = gt_labels == 0
+
+        tpr = np.mean(pred_labels[positive_mask] == 1) if np.any(positive_mask) else 0
+        tnr = np.mean(pred_labels[negative_mask] == 0) if np.any(negative_mask) else 0
+
+        # Add TPR and TNR to metrics
+        test_metrics['tpr'] = tpr
+        test_metrics['tnr'] = tnr
+
+        # Log metrics to TensorBoard
+        for metric_name, metric_value in test_metrics.items():
+            self.writer.add_scalar(f'TestResults/{metric_name}', metric_value, 0)
+
+        # Find and log misclassifications
+        print("🔍 Analyzing test failures...")
+        self.find_misclassified_examples(self.test_pairs, self.test_pair_labels, num_examples=15)
+
+        # Create ROC curve
+        self.plot_test_roc_curve(predictions, gt_labels)
+
+        return test_metrics
+
+    def plot_test_roc_curve(self, predictions: np.ndarray, gt_labels: np.ndarray) -> None:
+        """Plot and log ROC curve for test results."""
+        fpr, tpr, thresholds = roc_curve(gt_labels, predictions)
+        roc_auc = auc(fpr, tpr)
+
+        # Create ROC plot
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+        ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title('Test Set ROC Curve')
+        ax.legend(loc="lower right")
+        ax.grid(True, alpha=0.3)
+
+        # Log to TensorBoard
+        self.writer.add_figure('TestResults/roc_curve', fig, 0)
+        plt.close(fig)
+
+    def generate_test_report(self, test_results: Dict[str, float]) -> None:
+        """Generate a comprehensive test report."""
+
+        # Create a detailed test report
+        test_report = f"""
+        COMPREHENSIVE TEST EVALUATION REPORT
+        ====================================
+
+        Model Architecture: Siamese Neural Network (Base + Enhanced Augmentation)
+        Test Dataset: LFW-a Test Set
+        Model File: best_model.pth
+
+        PERFORMANCE METRICS:
+        - Overall Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy'] * 100:.2f}%)
+        - True Positive Rate (TPR): {test_results['tpr']:.4f} ({test_results['tpr'] * 100:.2f}%)
+        - True Negative Rate (TNR): {test_results['tnr']:.4f} ({test_results['tnr'] * 100:.2f}%)
+        - F1 Score: {test_results['f1_score']:.4f}
+        - Area Under Curve (AUC): {test_results['auc']:.4f}
+        - Average Precision: {test_results['average_precision']:.4f}
+
+        INTERPRETATION:
+        - Same Person Detection: {test_results['tpr'] * 100:.1f}% of actual same-person pairs correctly identified
+        - Different Person Detection: {test_results['tnr'] * 100:.1f}% of different-person pairs correctly identified
+        - Model Confidence: AUC of {test_results['auc']:.3f} indicates {'good' if test_results['auc'] > 0.8 else 'moderate' if test_results['auc'] > 0.7 else 'limited'} discrimination ability
+
+        VALIDATION vs TEST COMPARISON:
+        - Expected Validation Accuracy: ~80.7% (from enhanced augmentation training)
+        - Actual Test Accuracy: {test_results['accuracy'] * 100:.2f}%
+        - Performance Drop: {80.7 - test_results['accuracy'] * 100:.1f}%
+
+        METHODOLOGY:
+        - Zero data leakage: Test individuals never seen during training/validation
+        - Standard evaluation protocol: Balanced pair evaluation
+        - Consistent preprocessing: Same pipeline as training data
+        - Model: Pre-trained weights loaded from best_model.pth
+
+        FINAL ASSESSMENT:
+        {'EXCELLENT GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 3 else 'GOOD GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 7 else 'MODERATE GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 12 else 'POOR GENERALIZATION'}
+        """
+
+        # Log to TensorBoard
+        self.writer.add_text('TestResults/comprehensive_report', test_report, 0)
+
+        # Save to file
+        os.makedirs('test_results', exist_ok=True)
+        with open('test_results/final_test_evaluation_report.txt', 'w') as f:
+            f.write(test_report)
+
+        print("📋 Test report saved to: test_results/final_test_evaluation_report.txt")
