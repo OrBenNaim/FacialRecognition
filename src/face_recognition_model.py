@@ -1,6 +1,9 @@
+import json
 import os
+import pickle
 import time
 import warnings
+from datetime import datetime
 from typing import Tuple, Optional, Any, Set, Dict, List # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
 import matplotlib.pyplot as plt
@@ -27,7 +30,7 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     EARLY_STOPPING_PATIENCE, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD
+    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, VALIDATION_SPLIT
 )
 from src.utils import plot_distribution_charts, move_data_to_appropriate_device, \
     apply_simple_augmentation  # Visualization utilities
@@ -1605,3 +1608,167 @@ class FaceRecognition:
             f.write(test_report)
 
         print("📋 Test report saved to: test_results/final_test_evaluation_report.txt")
+
+    def save_preprocessed_data(self, data_cache_dir: str = "data_cache") -> None:
+        """
+        Save preprocessed training data to local files for faster loading.
+
+        Args:
+            data_cache_dir: Directory to save cached data
+        """
+        os.makedirs(data_cache_dir, exist_ok=True)
+
+        print("💾 Saving preprocessed data...")
+
+        # Save training data
+        train_data = {
+            'train_pairs': self.train_pairs,
+            'train_pair_labels': self.train_pair_labels,
+            'train_people_names': self.train_people_names
+        }
+
+        # Save validation data
+        val_data = {
+            'val_pairs': self.val_pairs,
+            'val_pair_labels': self.val_pair_labels,
+            'val_people_names': self.val_people_names
+        }
+
+        # Save metadata
+        metadata = {
+            'train_val_person_images': self.train_val_person_images,
+            'train_val_image_dict': self.train_val_image_dict,
+            'train_val_distribution': self.train_val_distribution,
+            'stats': self.stats,
+            'input_shape': self.input_shape,
+            'validation_split': VALIDATION_SPLIT
+        }
+
+        # Save files
+        with open(os.path.join(data_cache_dir, 'train_data.pkl'), 'wb') as f:
+            pickle.dump(train_data, f)
+
+        with open(os.path.join(data_cache_dir, 'val_data.pkl'), 'wb') as f:
+            pickle.dump(val_data, f)
+
+        with open(os.path.join(data_cache_dir, 'metadata.pkl'), 'wb') as f:
+            pickle.dump(metadata, f)
+
+        # Save data info for verification
+        data_info = {
+            'creation_time': datetime.now().isoformat(),
+            'train_pairs_count': len(self.train_pairs),
+            'val_pairs_count': len(self.val_pairs),
+            'unique_people': len(self.train_val_person_images),
+            'input_shape': self.input_shape,
+            'validation_split': VALIDATION_SPLIT,
+            'data_hash': self._calculate_data_hash()
+        }
+
+        with open(os.path.join(data_cache_dir, 'data_info.json'), 'w') as f:
+            json.dump(data_info, f, indent=2)
+
+        print(f"✅ Preprocessed data saved to: {data_cache_dir}")
+        print(f"   - Training pairs: {len(self.train_pairs):,}")
+        print(f"   - Validation pairs: {len(self.val_pairs):,}")
+        print(f"   - Unique people: {len(self.train_val_person_images):,}")
+
+    def load_preprocessed_data(self, data_cache_dir: str = "data_cache") -> bool:
+        """
+        Load preprocessed training data from local files.
+
+        Args:
+            data_cache_dir: Directory containing cached data
+
+        Returns:
+            bool: True if data loaded successfully, False otherwise
+        """
+        if not os.path.exists(data_cache_dir):
+            return False
+
+        required_files = [
+            'train_data.pkl',
+            'val_data.pkl',
+            'metadata.pkl',
+            'data_info.json'
+        ]
+
+        # Check if all required files exist
+        for file_name in required_files:
+            if not os.path.exists(os.path.join(data_cache_dir, file_name)):
+                print(f"⚠️ Missing cached file: {file_name}")
+                return False
+
+        try:
+            print("📂 Loading preprocessed data from cache...")
+
+            # Load data info for verification
+            with open(os.path.join(data_cache_dir, 'data_info.json'), 'r') as f:
+                data_info = json.load(f)
+
+            # Verify data compatibility
+            if (data_info['input_shape'] != list(self.input_shape) or
+                    data_info['validation_split'] != VALIDATION_SPLIT):
+                print("⚠️ Cached data incompatible with current settings")
+                return False
+
+            # Load training data
+            with open(os.path.join(data_cache_dir, 'train_data.pkl'), 'rb') as f:
+                train_data = pickle.load(f)
+
+            self.train_pairs = train_data['train_pairs']
+            self.train_pair_labels = train_data['train_pair_labels']
+            self.train_people_names = train_data['train_people_names']
+
+            # Load validation data
+            with open(os.path.join(data_cache_dir, 'val_data.pkl'), 'rb') as f:
+                val_data = pickle.load(f)
+
+            self.val_pairs = val_data['val_pairs']
+            self.val_pair_labels = val_data['val_pair_labels']
+            self.val_people_names = val_data['val_people_names']
+
+            # Load metadata
+            with open(os.path.join(data_cache_dir, 'metadata.pkl'), 'rb') as f:
+                metadata = pickle.load(f)
+
+            self.train_val_person_images = metadata['train_val_person_images']
+            self.train_val_image_dict = metadata['train_val_image_dict']
+            self.train_val_distribution = metadata['train_val_distribution']
+            self.stats = metadata['stats']
+
+            print(f"✅ Preprocessed data loaded successfully!")
+            print(f"   - Training pairs: {len(self.train_pairs):,}")
+            print(f"   - Validation pairs: {len(self.val_pairs):,}")
+            print(f"   - Unique people: {len(self.train_val_person_images):,}")
+            print(f"   - Cached on: {data_info['creation_time']}")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to load cached data: {e}")
+            return False
+
+    def _calculate_data_hash(self) -> str:
+        """Calculate hash of current data configuration for verification."""
+        config_str = f"{TRAIN_FILE_PATH}_{VALIDATION_SPLIT}_{self.input_shape}"
+        return hashlib.md5(config_str.encode()).hexdigest()
+
+    def clear_data_cache(self, data_cache_dir: str = "data_cache") -> None:
+        """Clear cached data files."""
+        if os.path.exists(data_cache_dir):
+            import shutil
+            shutil.rmtree(data_cache_dir)
+            print(f"🗑️ Cleared data cache: {data_cache_dir}")
+        else:
+            print("ℹ️ No data cache to clear")
+
+    def get_cache_info(self, data_cache_dir: str = "data_cache") -> dict:
+        """Get information about cached data."""
+        info_file = os.path.join(data_cache_dir, 'data_info.json')
+
+        if os.path.exists(info_file):
+            with open(info_file, 'r') as f:
+                return json.load(f)
+        else:
+            return {}
