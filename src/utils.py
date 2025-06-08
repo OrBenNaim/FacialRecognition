@@ -13,7 +13,7 @@ from src.constants import (
     NOISE_MEAN,
     NOISE_STD,
     PIXEL_MIN_VALUE,
-    PIXEL_MAX_VALUE, ROTATION_THRESHOLD, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE
+    PIXEL_MAX_VALUE
 )
 
 def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
