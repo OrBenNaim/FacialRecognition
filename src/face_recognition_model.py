@@ -7,11 +7,9 @@ from collections import defaultdict, Counter  # For efficient data structure han
 import matplotlib.pyplot as plt
 from typing import Dict, List
 
-# Second-party modules
 from numpy import floating, ndarray, dtype
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, f1_score
 
-# Third-party imports
 import numpy as np  # For numerical operations
 import torch  # Primary deep learning framework
 import torch.optim as optim  # Optimization algorithms
@@ -31,7 +29,7 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     EARLY_STOPPING_PATIENCE, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, IMPROVED_KERNEL_SIZES, STRIDE, IMPROVED_NUM_OF_FILTERS
+    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD
 )
 from src.utils import plot_distribution_charts, move_data_to_appropriate_device, \
     apply_simple_augmentation  # Visualization utilities
@@ -250,126 +248,6 @@ class BaseNetwork(nn.Module):
 
         return x
 
-
-class ImprovedBaseNetwork(nn.Module):
-    """
-    Enhanced base network with BatchNorm, Dropout, and smaller kernels
-    """
-
-    def __init__(self, input_shape: Tuple[int, int, int]):
-        super(ImprovedBaseNetwork, self).__init__()
-        self.input_shape = input_shape
-
-        # Layer 1: First convolutional block
-        # Input: (input_shape) -> Output: (NUM_OF_FILTERS_LAYER1 feature maps)
-        self.conv1 = nn.Conv2d(
-            in_channels=input_shape[2],  # Number of input channels (1 for grayscale),
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer1'],  # Number of output feature maps
-            kernel_size=IMPROVED_KERNEL_SIZES['layer1'],
-            padding=2)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.pool1 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
-
-        self.conv2 = nn.Conv2d(
-            in_channels=IMPROVED_NUM_OF_FILTERS['layer1'],
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer2'],
-            kernel_size=IMPROVED_KERNEL_SIZES['layer2'],
-            padding=2)
-        self.bn2 = nn.BatchNorm2d(128)
-        self.pool2 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
-
-        self.conv3 = nn.Conv2d(
-            in_channels=IMPROVED_NUM_OF_FILTERS['layer2'],
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer3'],
-            kernel_size=IMPROVED_KERNEL_SIZES['layer3'],
-            padding=1)
-        self.bn3 = nn.BatchNorm2d(256)
-        self.pool3 = nn.MaxPool2d(kernel_size=POOL_SIZE, stride=STRIDE)
-
-        self.conv4 = nn.Conv2d(
-            in_channels=IMPROVED_NUM_OF_FILTERS['layer3'],
-            out_channels=IMPROVED_NUM_OF_FILTERS['layer4'],
-            kernel_size=IMPROVED_KERNEL_SIZES['layer4'],
-            padding=1)
-        self.bn4 = nn.BatchNorm2d(512)
-
-        # Calculate flattened size
-        self._calculate_flatten_size()
-
-        # FC layers with dropout
-        self.fc1 = nn.Linear(self.flatten_size, 4096)
-        self.dropout1 = nn.Dropout(0.2)
-        self.fc2 = nn.Linear(4096, 4096)
-        self.dropout2 = nn.Dropout(0.1)
-
-        self._initialize_weights()
-
-    def _calculate_flatten_size(self):
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, 1, self.input_shape[0], self.input_shape[1])
-            x = self.pool1(F.relu(self.bn1(self.conv1(dummy_input))))
-            x = self.pool2(F.relu(self.bn2(self.conv2(x))))
-            x = self.pool3(F.relu(self.bn3(self.conv3(x))))
-            x = F.relu(self.bn4(self.conv4(x)))
-            self.flatten_size = x.view(1, -1).size(1)
-
-    def _initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-        # Forward pass with BatchNorm and Dropout
-        x = self.pool1(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool2(F.relu(self.bn2(self.conv2(x))))
-        x = self.pool3(F.relu(self.bn3(self.conv3(x))))
-        x = F.relu(self.bn4(self.conv4(x)))
-
-        # Flatten and FC layers
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = self.dropout1(x)
-        x = torch.sigmoid(self.fc2(x))
-        if self.training:  # Only apply dropout during training
-            x = self.dropout2(x)
-
-        return x
-
-
-class ImprovedSiameseNetwork(nn.Module):
-    """
-    Improved Siamese Network using enhanced base network
-    """
-
-    def __init__(self, input_shape: Tuple[int, int, int]):
-        super(ImprovedSiameseNetwork, self).__init__()
-        self.base_network = ImprovedBaseNetwork(input_shape)
-        self.prediction = nn.Linear(4096, 1)
-
-        # Initialize prediction layer
-        nn.init.xavier_uniform_(self.prediction.weight)
-        nn.init.constant_(self.prediction.bias, 0.5)
-
-    def forward(self, input1: torch.Tensor, input2: torch.Tensor) -> torch.Tensor:
-        # Get embeddings from both inputs
-        output1 = self.base_network(input1)
-        output2 = self.base_network(input2)
-
-        # Compute L1 distance and predict similarity
-        l1_distance = torch.abs(output1 - output2)
-        prediction = torch.sigmoid(self.prediction(l1_distance))
-
-        return prediction
-
-
 class SiameseNetwork(nn.Module):
     """
     Complete Siamese Network architecture for face similarity comparison.
@@ -468,7 +346,9 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+
+        # Use weighted BCE (Binary Cross Entropy Loss) later
+        self.criterion = nn.BCELoss()
         self.history: Optional[Dict[str, List[float]]] = None
 
         self.start_time = None
@@ -542,7 +422,7 @@ class FaceRecognition:
         # Initialize model components
         self.model: Optional[SiameseNetwork] = None
         self.optimizer: Optional[optim.Adam] = None
-        self.criterion = nn.BCELoss()  # Binary Cross Entropy Loss
+        self.criterion = nn.BCELoss()
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
@@ -840,16 +720,9 @@ class FaceRecognition:
         Returns:
             SiameseNetwork Object - The complete Siamese network model
         """
-        if self.use_improved_arch:
-
-            # Use the improved architecture
-            self.model = ImprovedSiameseNetwork(self.input_shape).to(device)
-            print("Using improved architecture with BatchNorm and Dropout\n")
-
-        else:
-            # Use your base architecture
-            self.model = SiameseNetwork(self.input_shape).to(device)
-            print("Using base architecture\n")
+        # Use your base architecture
+        self.model = SiameseNetwork(self.input_shape).to(device)
+        print("Using base architecture\n")
 
         # Create optimizer (keep existing code)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -960,7 +833,7 @@ class FaceRecognition:
 
         # Log model graph
         try:
-            # Create fake input with the correct shape (batch_size, channels, height, width)
+            # Create a fake input with the correct shape (batch_size, channels, height, width)
             sample_input_1 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
             sample_input_2 = torch.randn(1, 1, self.input_shape[0], self.input_shape[1]).to(device)
 
