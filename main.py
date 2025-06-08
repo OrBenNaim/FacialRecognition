@@ -25,35 +25,31 @@ if __name__ == '__main__':
 
     run_multiple_experiments(model=model)
 
-    #============ Decided to move on with 'Enhanced base network' ============
+    #============ Decided to move on with 'Base with Aug network' ============
 
-    # Run multiple experiments
-    experiments = [
-        # Enhanced base network with BatchNorm, Dropout, and smaller kernels
-        {"architecture_type": "base", "lr": 6e-5, "batch_size": 32, "epochs": 50},
-    ]
+    # Run chosen experiment
+    experiment = {"architecture_type": "base", "lr": 6e-5, "batch_size": 32, "epochs": 50}
 
-    for exp in experiments:
-        model.reset_exp_attr()
+    model.reset_exp_attr()
 
-        architecture_type = exp["architecture_type"]
-        learning_rate = exp["lr"]
-        batch_size = exp["batch_size"]
-        epochs = exp["epochs"]
+    architecture_type = experiment["architecture_type"]
+    learning_rate = experiment["lr"]
+    batch_size = experiment["batch_size"]
+    epochs = experiment["epochs"]
 
-        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_BCE"
+    exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_BCE"
 
-        use_improved_arch = None
+    use_improved_arch = None
 
-        if architecture_type == "base":
-            use_improved_arch = False
-            exp_name += "_base_arch"
+    if architecture_type == "base":
+        use_improved_arch = False
+        exp_name += "_base_arch"
 
-        else:
-            raise ValueError("Architecture type must be 'base' for this experiment. Please try again.")
+    else:
+        raise ValueError("Architecture type must be 'base' for this experiment. Please try again.")
 
-        # Run experiment
-        model.run_complete_experiment(learning_rate=learning_rate, batch_size=batch_size, epochs=epochs,
-                                      use_improved_arch=use_improved_arch, exp_name=exp_name)
+    # Run experiment
+    model.run_complete_experiment(learning_rate=learning_rate, batch_size=batch_size, epochs=epochs,
+                                  use_improved_arch=use_improved_arch, exp_name=exp_name)
 
-        print(f"\n✅ Completed {model.experiment_name}")
+    print(f"\n✅ Completed {model.experiment_name}")
