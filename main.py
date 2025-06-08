@@ -65,7 +65,7 @@ if __name__ == '__main__':
     # Run multiple experiments
     experiments = [
         # Enhanced base network with BatchNorm, Dropout, and smaller kernels
-        {"architecture_type": "improved", "lr": 6e-5, "batch_size": 32, "epochs": 50},
+        {"architecture_type": "base", "lr": 6e-5, "batch_size": 32, "epochs": 50},
     ]
 
     for exp in experiments:
@@ -76,16 +76,16 @@ if __name__ == '__main__':
         batch_size = exp["batch_size"]
         epochs = exp["epochs"]
 
-        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_dropout_reduced_weighted_BCE"
+        exp_name = f"lr{learning_rate}_bs{batch_size}_epochs{epochs}_BCE"
 
         use_improved_arch = None
 
-        if architecture_type == "improved":
-            use_improved_arch = True
-            exp_name += "_improved_arch"  # Enhanced base network with BatchNorm, Dropout, and smaller kernels
+        if architecture_type == "base":
+            use_improved_arch = False
+            exp_name += "_base_arch"
 
         else:
-            raise ValueError("Architecture type must be 'improved' for this experiment. Please try again.")
+            raise ValueError("Architecture type must be 'base' for this experiment. Please try again.")
 
         # Run experiment
         model.run_complete_experiment(learning_rate=learning_rate, batch_size=batch_size, epochs=epochs,
