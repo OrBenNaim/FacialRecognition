@@ -48,25 +48,21 @@ STRIDE = 2
 EARLY_STOPPING_PATIENCE = 15
 CLASSIFICATION_THRESHOLD = 0.5
 
-# Small Batch Test Parameters
-SMALL_BATCH_TEST_LEARNING_RATE = 1e-3
-SMALL_BATCH_TEST_ITERATIONS = 20
-SMALL_BATCH_SUCCESS_THRESHOLD = 0.9
-SMALL_BATCH_GOOD_PROGRESS_THRESHOLD = 0.7
-
 #================== Data Augmentation ====================
 # Probability thresholds for each augmentation
-HORIZONTAL_FLIP_THRESHOLD = 0.5         # 50% chance (if random > 0.5)
-BRIGHTNESS_ADJUST_THRESHOLD = 0.5       # 50% chance (if random > 0.5)
-GAUSSIAN_NOISE_THRESHOLD = 0.5          # 50% chance (if random > 0.5)
+HORIZONTAL_FLIP_THRESHOLD = 0.5         # 50% chance
+BRIGHTNESS_ADJUST_THRESHOLD = 0.3       # 30% chance
+GAUSSIAN_NOISE_THRESHOLD = 0.7          # 70% chance
+ROTATION_THRESHOLD = 0.6
+CONTRAST_THRESHOLD = 0.5
 
 # Brightness adjustment parameters
-BRIGHTNESS_MIN_FACTOR = 0.8             # Minimum brightness (80%)
-BRIGHTNESS_MAX_FACTOR = 1.2             # Maximum brightness (120%)
+BRIGHTNESS_MIN_FACTOR = 0.7             # Minimum brightness (80%)
+BRIGHTNESS_MAX_FACTOR = 1.4             # Maximum brightness (120%)
 
 # Gaussian noise parameters
 NOISE_MEAN = 0                          # Mean of Gaussian noise
-NOISE_STD = 0.05                        # Standard deviation of noise
+NOISE_STD = 0.02                        # Standard deviation of noise
 
 # Pixel value limits
 PIXEL_MIN_VALUE = 0                     # Minimum pixel value after clipping
