@@ -1,7 +1,6 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import rotate
 
 from src.constants import (
     SAVE_IMG_DIR_PATH,
@@ -15,7 +14,6 @@ from src.constants import (
     PIXEL_MIN_VALUE,
     PIXEL_MAX_VALUE
 )
-from src.face_recognition_model import FaceRecognition
 
 
 def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
@@ -122,7 +120,7 @@ def apply_simple_augmentation(image_array):
 
     return image_array
 
-def run_multiple_experiments(model: FaceRecognition):
+def run_multiple_experiments(model):
     # Run multiple experiments
         experiments = [
             # Enhanced base network with BatchNorm, Dropout, and smaller kernels
