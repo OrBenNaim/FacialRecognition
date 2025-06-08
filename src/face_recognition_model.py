@@ -424,7 +424,7 @@ class FaceRecognition:
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
-    def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float) -> None:
+    def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float = None) -> None:
         """
         Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
 
@@ -467,7 +467,7 @@ class FaceRecognition:
         if not os.path.exists(dataset_file_path):
             raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
 
-        if not 0 <= validation_split <= 1:
+        if validation_split is not None and not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
 
         print(f"Image resize target: {self.input_shape[0]}x{self.input_shape[1]}")
@@ -1167,7 +1167,7 @@ class FaceRecognition:
         """
         Calculate detailed performance metrics as required by the exercise.
         """
-        accuracy, predictions, gt_labels = self.__evaluate_verification(pairs, pair_labels)
+        accuracy, predictions, gt_labels = self.evaluate_verification(pairs, pair_labels)
 
         # Calculate ROC curve and AUC
         fpr, tpr, thresholds = roc_curve(gt_labels, predictions)
@@ -1190,7 +1190,7 @@ class FaceRecognition:
 
         return metrics
 
-    def __evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
+    def evaluate_verification(self, pairs: np.ndarray, pair_labels: np.ndarray) \
             -> tuple[floating[Any], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
         Evaluates the Siamese network's performance on face verification tasks.
@@ -1397,3 +1397,78 @@ class FaceRecognition:
         print(f"Final Accuracy: {metrics['accuracy']:.4f}")
         print(f"Final Precision: {metrics['average_precision']:.4f}")
         print(f"Final F1 Score: {metrics['f1_score']:.4f}")
+
+    def log_test_dataset_analysis(self) -> None:
+        """
+        Analyze and log test dataset statistics to TensorBoard.
+        Similar to log_dataset_analysis_to_tensorboard but for test data.
+        """
+        # Calculate test dataset stats
+        test_distribution = [len(images) for images in self.test_person_images.values()]
+
+        test_stats = {
+            'total_test_pairs': len(self.test_pairs),
+            'positive_test_pairs': np.sum(self.test_pair_labels == 1),
+            'negative_test_pairs': np.sum(self.test_pair_labels == 0),
+            'unique_test_people': len(self.test_person_images),
+            'unique_test_images': len(self.test_image_dict),
+        }
+
+        # Log test statistics to TensorBoard
+        for key, value in test_stats.items():
+            if isinstance(value, (int, float)):
+                self.writer.add_scalar(f'TestDataset/{key}', value, 0)
+
+        # Log test distribution as histogram
+        distribution_data = np.array(test_distribution)
+        self.writer.add_histogram('TestDataset/images_per_person_distribution', distribution_data, 0)
+
+        # Create and log test distribution plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        distribution_counter = Counter(test_distribution)
+        sorted_dist = dict(sorted(distribution_counter.items()))
+
+        ax.bar(sorted_dist.keys(), sorted_dist.values(), color='lightcoral')
+        ax.set_title('Test Set: Images per Person Distribution')
+        ax.set_xlabel('Number of Images per Person')
+        ax.set_ylabel('Number of People')
+
+        self.writer.add_figure('TestDataset/distribution_plot', fig, 0)
+        plt.close(fig)
+
+        # Log test summary
+        test_summary = f"""
+        Test Dataset Analysis Summary:
+        - Total test pairs: {test_stats['total_test_pairs']:,}
+        - Positive test pairs: {test_stats['positive_test_pairs']:,}
+        - Negative test pairs: {test_stats['negative_test_pairs']:,}
+        - Unique people: {test_stats['unique_test_people']:,}
+        - Unique images: {test_stats['unique_test_images']:,}
+        """
+        self.writer.add_text('TestDataset/Summary', test_summary, 0)
+
+        print(
+            f"Test dataset loaded: {test_stats['total_test_pairs']} pairs from {test_stats['unique_test_people']} people")
+
+    def run_model_on_test_dataset(self) -> None:
+        """
+        Load the best trained model for testing.
+
+        Args:
+        """
+        # Calculate metrics
+        print("\n📈 Calculating metrics...")
+        metrics = self.calculate_detailed_metrics(self.test_pairs, self.test_pair_labels)
+
+        # Log misclassified examples
+        print("\n🔍 Analyzing failures...")
+        self.find_misclassified_examples(self.test_pairs, self.test_pair_labels)
+
+        # Minimal final console output
+        print("\n✅ Test run completed!")
+
+        print("===== Test results =====")
+        print(f"Final Accuracy: {metrics['accuracy']:.4f}")
+        print(f"Final Precision: {metrics['average_precision']:.4f}")
+        print(f"Final F1 Score: {metrics['f1_score']:.4f}")
+        print(f"Final AUC: {metrics['auc']:.4f}")

@@ -412,13 +412,58 @@ improvements** can overcome architectural limitations within existing model capa
 
 ## 6. Takeaways
 ### 6.1 Conclusions
+This project successfully implemented a Siamese Neural Network for one-shot facial recognition, achieving meaningful 
+results while revealing important insights about deep learning limitations and optimization strategies.
 
+#### 6.1.1 Key Findings
+**Performance Progression:**
+
+- **Baseline Model:** 75.4% validation accuracy with basic architecture
+- **Enhanced Augmentation:** 80.7% validation accuracy (+5.3% improvement through data strategy)
+- **Final Test Performance:** 71.9% test accuracy with balanced 84.6% TPR and 59.2% TNR
+
+**Critical Discovery:** Domain-specific data augmentation succeeded where standard regularization techniques 
+(weight decay, learning rate reduction, batch size changes, early stopping adjustments) completely failed. This demonstrates that understanding the problem domain is more valuable than blindly applying generic optimization techniques.
 
 ### 6.2 Future Improvements
+#### 6.2.1 Architectural Enhancements
+
+**Network Architecture:**
+
+- Implement deeper CNN backbones (ResNet-style residual connections)
+- Add feature pyramid networks for multiscale face analysis
+- Incorporate batch normalization and dropout at strategic positions
+
+#### 6.2.2 Advanced Data Strategies
+
+**Hard Negative Mining:**
+
+- Focus training on challenging negative pairs that the model currently confuses
+- Generate challenging examples from people with similar demographics
+- Balance training with more diverse positive pairs across different conditions
+
+#### 6.2.3 Training Optimization
+**Loss Function Improvements:**
+
+- Implement focal loss to handle class imbalance more effectively
+- Add margin-based losses for better feature separation
+- Combine multiple loss functions for comprehensive optimization
 
 
 ### 6.3 Lessons Learned
 
+#### 6.3.1 Technical Insights
+
+1. **Domain Knowledge Trumps Generic Solutions:** Face-specific augmentation strategies proved more effective than standard ML regularization techniques, highlighting the importance of understanding the problem domain. 
+2. **Architecture Ceilings Are Real:** When multiple hyperparameter adjustments fail to improve performance, the issue is likely architectural capacity rather than optimization parameters. 
+3. **Overfitting Can Be a Feature Learning Problem:** High training accuracy with poor validation performance may indicate insufficient model capacity for meaningful feature extraction, not excessive complexity. 
+4. **Balanced Metrics Are Essential:** A model with 84% accuracy but severe class bias (Enhanced_Base) is less valuable than one with 76.6% accuracy but balanced performance (Base_with_Aug).
+
+#### 6.3.2 Experimental Methodology
+
+1. **Systematic Approach Pays Off:** Testing standard solutions first and documenting failures helped identify the root cause and led to the successful augmentation strategy. 
+2. **Multiple Metrics Prevent Misleading Conclusions:** Relying solely on accuracy would have led to incorrect model selection; TPR/TNR analysis revealed critical model biases. 
+3. **Ablation Studies Are Crucial:** Testing individual changes (augmentation parameters) helped identify which specific modifications contributed to improvements.
 
 ## References
 1. Koch, G., Zemel, R., & Salakhutdinov, R. (2015). Siamese neural networks for one-shot image recognition. ICML deep learning workshop.
