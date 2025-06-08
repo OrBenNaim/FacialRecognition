@@ -1,6 +1,7 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import rotate
 
 from src.constants import (
     SAVE_IMG_DIR_PATH,
@@ -12,7 +13,7 @@ from src.constants import (
     NOISE_MEAN,
     NOISE_STD,
     PIXEL_MIN_VALUE,
-    PIXEL_MAX_VALUE
+    PIXEL_MAX_VALUE, ROTATION_THRESHOLD, ROTATION_MIN_ANGLE, ROTATION_MAX_ANGLE
 )
 
 def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
@@ -103,11 +104,11 @@ def apply_simple_augmentation(image_array):
     Returns:
         augmented image array
     """
-    # Random horizontal flip (50% chance)
+    # Random horizontal flip
     if np.random.random() > HORIZONTAL_FLIP_THRESHOLD:
         image_array = np.fliplr(image_array)
 
-    # Random brightness adjustment (±20%)
+    # Random brightness adjustment
     if np.random.random() > BRIGHTNESS_ADJUST_THRESHOLD:
         brightness_factor = np.random.uniform(BRIGHTNESS_MIN_FACTOR, BRIGHTNESS_MAX_FACTOR)
         image_array = np.clip(image_array * brightness_factor, PIXEL_MIN_VALUE, PIXEL_MAX_VALUE)
