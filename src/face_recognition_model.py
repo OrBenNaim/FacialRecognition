@@ -1,6 +1,8 @@
 import os
+import pickle
 import time
 import warnings
+from datetime import datetime
 from typing import Tuple, Optional, Any, Set, Dict, List # Type hints for better code documentation
 from collections import defaultdict, Counter  # For efficient data structure handling
 import matplotlib.pyplot as plt
@@ -27,7 +29,7 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     EARLY_STOPPING_PATIENCE, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD
+    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, VALIDATION_SPLIT, DATA_PATH_FOLDER, SAVED_LOGS_PATH
 )
 from src.utils import plot_distribution_charts, move_data_to_appropriate_device, \
     apply_simple_augmentation  # Visualization utilities
@@ -424,7 +426,7 @@ class FaceRecognition:
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
-    def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float = None) -> None:
+    def load_lfw_dataset(self, validation_split: float) -> None:
         """
         Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
 
@@ -437,10 +439,6 @@ class FaceRecognition:
 
         Parameters
         ----------
-        data_path_folder : str
-            Root directory path containing LFW person subdirectories
-        dataset_file_path : str
-            Path to the dataset pairs file (e.g., pairsDevTrain.txt)
         validation_split : float
             Fraction of training data to use for validation (0.0 to 1.0)
 
@@ -461,11 +459,11 @@ class FaceRecognition:
         """
         # ===== Input Validation =====
         # Ensure all required files and directories exist
-        if not os.path.exists(data_path_folder):
-            raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
-
-        if not os.path.exists(dataset_file_path):
-            raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
+        # if not os.path.exists(data_path_folder):
+        #     raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
+        #
+        # if not os.path.exists(dataset_file_path):
+        #     raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
 
         if validation_split is not None and not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
@@ -659,46 +657,44 @@ class FaceRecognition:
             # Convert lists to numpy arrays for model training
             return np.array(pairs), np.array(labels)
 
-        # === Step 1: Load Dataset ===
+        # === Step 1: Load Train_val Dataset ===
         print("Loading LFW-a dataset...")
 
-        # Load all unique images from a dataset file and create mappings
-        temp_image_dict, temp_person_images = load_all_images(dataset_file_path, data_path_folder)
+        # Load all unique images from a train dataset file and create mappings
+        train_val_image_dict, train_val_person_images = load_all_images(TRAIN_FILE_PATH, DATA_PATH_FOLDER)
+        self.train_val_person_images = train_val_person_images
+        self.train_val_image_dict = train_val_image_dict
 
-        if dataset_file_path == TRAIN_FILE_PATH:
-            self.train_val_person_images = temp_person_images
-            self.train_val_image_dict = temp_image_dict
+        # ===== Step 2: Split Training Data =====
+        print(f"\nSplitting training data into training/validation data (validation split: {validation_split})...")
+        self.train_people_names, self.val_people_names = split_people(person_images=train_val_person_images,
+                                                                      val_split=validation_split)
 
-            # ===== Step 2: Split Training Data =====
-            print(f"\nSplitting training data into training/validation data (validation split: {validation_split})...")
-            self.train_people_names, self.val_people_names = split_people(person_images=temp_person_images,
-                                                                          val_split=validation_split)
-            # ===== Step 3: Create Image Pairs =====
-            print("\nCreating pairs...")
+        # ===== Step 3: Create Image Pairs for Train =====
+        print("\nCreating pairs...")
 
-            # Create training pairs from the dataset
-            self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
-                                                                            image_dict=temp_image_dict,
-                                                                            allowed_people=set(self.train_people_names))
+        # Create training pairs from the dataset
+        self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=TRAIN_FILE_PATH,
+                                                                        image_dict=train_val_image_dict,
+                                                                        allowed_people=set(self.train_people_names))
 
-            # Create validation pairs from the dataset
-            self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
-                                                                        image_dict=temp_image_dict,
-                                                                        allowed_people=set(self.val_people_names))
-        elif dataset_file_path == TEST_FILE_PATH:
-            self.test_person_images = temp_person_images
-            self.test_image_dict = temp_image_dict
+        # Create validation pairs from the dataset
+        self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=TRAIN_FILE_PATH,
+                                                                    image_dict=train_val_image_dict,
+                                                                    allowed_people=set(self.val_people_names))
 
-            # ===== Step 3: Create Image Pairs =====
-            print("\nCreating pairs...")
+        # === Step 1: Load Test Dataset ===
+        test_image_dict, test_person_images = load_all_images(TEST_FILE_PATH, DATA_PATH_FOLDER)
+        self.test_person_images = test_person_images
+        self.test_image_dict = test_image_dict
 
-            # Create testing pairs from the dataset
-            self.test_pairs, self.test_pair_labels = (
-                create_pairs_for_set(pairs_file=dataset_file_path,
-                                     image_dict=temp_image_dict, allowed_people=set(self.test_person_images.keys())))
+        # ===== Step 3: Create Image Pairs for Test =====
+        print("\nCreating pairs...")
 
-        else:
-            raise ValueError(f"Invalid dataset file path: {dataset_file_path}")
+        # Create testing pairs from the dataset
+        self.test_pairs, self.test_pair_labels = (
+            create_pairs_for_set(pairs_file=TEST_FILE_PATH,
+                                 image_dict=test_image_dict, allowed_people=set(self.test_person_images.keys())))
 
     def create_siamese_network(self) -> SiameseNetwork:
 
@@ -1365,7 +1361,7 @@ class FaceRecognition:
         self.use_improved_arch = use_improved_arch
         self.experiment_name = exp_name
 
-        self.tensorboard_log_dir = os.path.join("tensorboard_logs", self.experiment_name)
+        self.tensorboard_log_dir = os.path.join(SAVED_LOGS_PATH, self.experiment_name)
         os.makedirs(self.tensorboard_log_dir, exist_ok=True)
         self.writer = SummaryWriter(log_dir=self.tensorboard_log_dir)
 
@@ -1472,3 +1468,196 @@ class FaceRecognition:
         print(f"Final Precision: {metrics['average_precision']:.4f}")
         print(f"Final F1 Score: {metrics['f1_score']:.4f}")
         print(f"Final AUC: {metrics['auc']:.4f}")
+
+    def load_best_model(self, model_path: str = "best_model.pth") -> None:
+        """
+        Load the best trained model for testing.
+
+        Args:
+            model_path: Path to the saved model state dict
+        """
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+
+        # Create model architecture
+        self.model = SiameseNetwork(self.input_shape).to(device)
+
+        # Load trained weights
+        self.model.load_state_dict(torch.load(model_path, map_location=device))
+        self.model.eval()  # Set to evaluation mode
+
+        # Set the default batch size for evaluation
+        self.batch_size = 32
+
+        print(f"✅ Loaded model from {model_path}")
+
+    def run_test_evaluation(self) -> Dict[str, float]:
+        """
+        Run comprehensive evaluation on test dataset.
+
+        Returns:
+            Dictionary containing all test metrics
+        """
+        print("🔍 Evaluating on test dataset...")
+
+        # Calculate detailed metrics
+        test_metrics = self.calculate_detailed_metrics(self.test_pairs, self.test_pair_labels)
+
+        # Get additional metrics
+        accuracy, predictions, gt_labels = self.evaluate_verification(self.test_pairs, self.test_pair_labels)
+
+        # Calculate TPR and TNR
+        pred_labels = (predictions > CLASSIFICATION_THRESHOLD).astype(int).flatten()
+        positive_mask = gt_labels == 1
+        negative_mask = gt_labels == 0
+
+        tpr = np.mean(pred_labels[positive_mask] == 1) if np.any(positive_mask) else 0
+        tnr = np.mean(pred_labels[negative_mask] == 0) if np.any(negative_mask) else 0
+
+        # Add TPR and TNR to metrics
+        test_metrics['tpr'] = tpr
+        test_metrics['tnr'] = tnr
+
+        # Log metrics to TensorBoard
+        for metric_name, metric_value in test_metrics.items():
+            self.writer.add_scalar(f'TestResults/{metric_name}', metric_value, 0)
+
+        # Find and log misclassifications
+        print("🔍 Analyzing test failures...")
+        self.find_misclassified_examples(self.test_pairs, self.test_pair_labels, num_examples=15)
+
+        # Create ROC curve
+        self.plot_test_roc_curve(predictions, gt_labels)
+
+        return test_metrics
+
+    def plot_test_roc_curve(self, predictions: np.ndarray, gt_labels: np.ndarray) -> None:
+        """Plot and log ROC curve for test results."""
+        fpr, tpr, thresholds = roc_curve(gt_labels, predictions)
+        roc_auc = auc(fpr, tpr)
+
+        # Create ROC plot
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.4f})')
+        ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random Classifier')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title('Test Set ROC Curve')
+        ax.legend(loc="lower right")
+        ax.grid(True, alpha=0.3)
+
+        # Log to TensorBoard
+        self.writer.add_figure('TestResults/roc_curve', fig, 0)
+        plt.close(fig)
+
+    def save_dataset_to_cache(self, cache_file: str) -> None:
+        """
+        Save preprocessed dataset to a local file.
+
+        Args:
+            cache_file: Filename to save cached data
+        """
+        print("💾 Saving dataset data to cache...")
+
+        cache_data = {
+            # Training data
+            'train_pairs': self.train_pairs,
+            'train_pair_labels': self.train_pair_labels,
+            'train_people_names': self.train_people_names,
+
+            # Validation data
+            'val_pairs': self.val_pairs,
+            'val_pair_labels': self.val_pair_labels,
+            'val_people_names': self.val_people_names,
+
+            'test_pairs': self.test_pairs,
+            'test_pair_labels': self.test_pair_labels,
+            'test_people_names': self.test_person_images,
+
+            # Metadata
+            'train_val_person_images': self.train_val_person_images,
+            'train_val_image_dict': self.train_val_image_dict,
+            'train_val_distribution': self.train_val_distribution,
+            'stats': self.stats,
+
+            # Configuration info
+            'input_shape': self.input_shape,
+            'validation_split': VALIDATION_SPLIT,
+            'created_time': datetime.now().isoformat(),
+            'train_count': len(self.train_pairs),
+            'val_count': len(self.val_pairs),
+            'train_val_people_count': len(self.train_val_person_images),
+            'test_count': len(self.test_pairs),
+        }
+
+        with open(cache_file, 'wb') as f:
+            pickle.dump(cache_data, f)
+
+        file_size = os.path.getsize(cache_file) / (1024 * 1024)  # MB
+        print(f"✅ Dataset cached: {cache_file} ({file_size:.1f} MB)")
+        print(f"   - Training pairs: {len(self.train_pairs):,}")
+        print(f"   - Validation pairs: {len(self.val_pairs):,}")
+        print(f"   - train_val unique people: {len(self.train_val_person_images):,}")
+        print(f"   - Testing pairs: {len(self.train_pairs):,}")
+        print(f"   - test unique images: {len(self.test_person_images):,}")
+
+    def load_dataset_from_cache(self, cache_file: str) -> bool:
+        """
+        Load preprocessed dataset from a local file.
+
+        Args:
+            cache_file: Filename of cached data
+
+        Returns:
+            bool: True if loaded successfully, False otherwise
+        """
+        if not os.path.exists(cache_file):
+            return False
+
+        try:
+            print(f"📂 Loading dataset from cache: {cache_file}")
+
+            with open(cache_file, 'rb') as f:
+                cache_data = pickle.load(f)
+
+            # Verify compatibility
+            if (cache_data['input_shape'] != self.input_shape or
+                    cache_data['validation_split'] != VALIDATION_SPLIT):
+                print("⚠️  Cache incompatible with current settings")
+                return False
+
+            # Load all data
+            self.train_pairs = cache_data['train_pairs']
+            self.train_pair_labels = cache_data['train_pair_labels']
+            self.train_people_names = cache_data['train_people_names']
+
+            self.val_pairs = cache_data['val_pairs']
+            self.val_pair_labels = cache_data['val_pair_labels']
+            self.val_people_names = cache_data['val_people_names']
+
+            self.train_val_person_images = cache_data['train_val_person_images']
+            self.train_val_image_dict = cache_data['train_val_image_dict']
+            self.train_val_distribution = cache_data['train_val_distribution']
+
+            self.test_pairs = cache_data['test_pairs']
+            self.test_pair_labels = cache_data['test_pair_labels']
+            self.test_person_images = cache_data['test_people_images']
+            self.test_image_dict = cache_data['test_image_dict']
+
+            self.stats = cache_data['stats']
+
+            print(f"✅ Training data loaded from cache!")
+            print(f"   - Created: {cache_data['created_time']}")
+            print(f"   - Training pairs: {cache_data['train_count']:,}")
+            print(f"   - Validation pairs: {cache_data['val_count']:,}")
+            print(f"   - train_val unique people: {len(self.train_val_person_images):,}")
+            print(f"   - Testing pairs: {len(self.train_pairs):,}")
+            print(f"   - test unique images: {len(self.test_person_images):,}")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to load cache: {e}")
+            return False

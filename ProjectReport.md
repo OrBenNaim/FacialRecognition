@@ -289,7 +289,7 @@ The training curves reveal important insights about model learning:
 - **Pattern**: Model occasionally confuses people with similar facial features or lighting conditions
 
 **Common False Positive Scenarios**:
-1. **Similar facial structure**: Asian men with glasses (Examples 1–2) - similar age, ethnicity, and accessories confuse the model
+1. **Similar facial structure**: Asian men with glasses (Examples 1–2)—similar age, ethnicity, and accessories confuse the model
 2. **Elderly men with beards**: Examples 2–3 show how facial hair and age-related features create false similarities
 3. **Young women with similar poses**: Examples 4–6 demonstrate how similar photography angles and lighting fool the model
 4. **Professional headshot similarity**: Examples 5–6 show identical formal photography styles leading to confusion
@@ -318,8 +318,8 @@ The training curves reveal important insights about model learning:
 
 **Examples from Results**:
 - Different gender pairs are classified as "same person"
-- Faces with different ethnic backgrounds are classified as "same person"  
-- Young vs. old faces are classified as "same person"
+- Faces with different ethnic backgrounds are classified as "same person."  
+- Young vs. old faces are classified as "same person."
 
 #### 5.3.2 False Negatives (Rare)
 - **Rate**: Only 0.5% of actual same-person pairs missed
@@ -347,7 +347,7 @@ The training curves reveal important insights about model learning:
 #### 5.5.1 Main Insights
 1. **Overfitting is the primary issue**: The dramatic gap between training (100%) and validation (76.6%) accuracy reveals the model's inability to generalize
 2. **Demographic bias in errors**: Model relies heavily on age, ethnicity, and contextual cues rather than unique facial features
-3. **Photography style matters**: Professional vs. casual photos, lighting, and pose significantly impact predictions
+3. **Photography style matters**: Professional vs. casual photos, lighting, and pose significant impact predictions
 4. **Balanced metrics are crucial**: 76.6% accuracy with balanced TPR (77%) and TNR (74.3%) is more trustworthy than higher accuracy with bias
 
 #### 5.5.2 Model Limitations
