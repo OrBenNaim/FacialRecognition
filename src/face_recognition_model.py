@@ -1,4 +1,3 @@
-import json
 import os
 import pickle
 import time
@@ -30,7 +29,7 @@ from src.constants import (
     KERNAL_SIZE_LAYER3, KERNAL_SIZE_LAYER4,
     POOL_SIZE,  # Pooling layer size
     EARLY_STOPPING_PATIENCE, TRAIN_FILE_PATH,
-    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, VALIDATION_SPLIT
+    TEST_FILE_PATH, CLASSIFICATION_THRESHOLD, VALIDATION_SPLIT, DATA_PATH_FOLDER, SAVED_LOGS_PATH
 )
 from src.utils import plot_distribution_charts, move_data_to_appropriate_device, \
     apply_simple_augmentation  # Visualization utilities
@@ -427,7 +426,7 @@ class FaceRecognition:
         self.history: Optional[Dict[str, List[float]]] = None
 
     # Load training and test datasets
-    def load_lfw_dataset(self, data_path_folder: str, dataset_file_path: str, validation_split: float = None) -> None:
+    def load_lfw_dataset(self, validation_split: float) -> None:
         """
         Load and preprocess the Labeled Faces in the Wild (LFW) dataset.
 
@@ -440,10 +439,6 @@ class FaceRecognition:
 
         Parameters
         ----------
-        data_path_folder : str
-            Root directory path containing LFW person subdirectories
-        dataset_file_path : str
-            Path to the dataset pairs file (e.g., pairsDevTrain.txt)
         validation_split : float
             Fraction of training data to use for validation (0.0 to 1.0)
 
@@ -464,11 +459,11 @@ class FaceRecognition:
         """
         # ===== Input Validation =====
         # Ensure all required files and directories exist
-        if not os.path.exists(data_path_folder):
-            raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
-
-        if not os.path.exists(dataset_file_path):
-            raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
+        # if not os.path.exists(data_path_folder):
+        #     raise FileNotFoundError(f"DATA folder path not found: {data_path_folder}")
+        #
+        # if not os.path.exists(dataset_file_path):
+        #     raise FileNotFoundError(f"Train file not found: {dataset_file_path}")
 
         if validation_split is not None and not 0 <= validation_split <= 1:
             raise ValueError(f"validation_split must be between 0 and 1, got {validation_split}")
@@ -662,46 +657,44 @@ class FaceRecognition:
             # Convert lists to numpy arrays for model training
             return np.array(pairs), np.array(labels)
 
-        # === Step 1: Load Dataset ===
+        # === Step 1: Load Train_val Dataset ===
         print("Loading LFW-a dataset...")
 
-        # Load all unique images from a dataset file and create mappings
-        temp_image_dict, temp_person_images = load_all_images(dataset_file_path, data_path_folder)
+        # Load all unique images from a train dataset file and create mappings
+        train_val_image_dict, train_val_person_images = load_all_images(TRAIN_FILE_PATH, DATA_PATH_FOLDER)
+        self.train_val_person_images = train_val_person_images
+        self.train_val_image_dict = train_val_image_dict
 
-        if dataset_file_path == TRAIN_FILE_PATH:
-            self.train_val_person_images = temp_person_images
-            self.train_val_image_dict = temp_image_dict
+        # ===== Step 2: Split Training Data =====
+        print(f"\nSplitting training data into training/validation data (validation split: {validation_split})...")
+        self.train_people_names, self.val_people_names = split_people(person_images=train_val_person_images,
+                                                                      val_split=validation_split)
 
-            # ===== Step 2: Split Training Data =====
-            print(f"\nSplitting training data into training/validation data (validation split: {validation_split})...")
-            self.train_people_names, self.val_people_names = split_people(person_images=temp_person_images,
-                                                                          val_split=validation_split)
-            # ===== Step 3: Create Image Pairs =====
-            print("\nCreating pairs...")
+        # ===== Step 3: Create Image Pairs for Train =====
+        print("\nCreating pairs...")
 
-            # Create training pairs from the dataset
-            self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
-                                                                            image_dict=temp_image_dict,
-                                                                            allowed_people=set(self.train_people_names))
+        # Create training pairs from the dataset
+        self.train_pairs, self.train_pair_labels = create_pairs_for_set(pairs_file=TRAIN_FILE_PATH,
+                                                                        image_dict=train_val_image_dict,
+                                                                        allowed_people=set(self.train_people_names))
 
-            # Create validation pairs from the dataset
-            self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=dataset_file_path,
-                                                                        image_dict=temp_image_dict,
-                                                                        allowed_people=set(self.val_people_names))
-        elif dataset_file_path == TEST_FILE_PATH:
-            self.test_person_images = temp_person_images
-            self.test_image_dict = temp_image_dict
+        # Create validation pairs from the dataset
+        self.val_pairs, self.val_pair_labels = create_pairs_for_set(pairs_file=TRAIN_FILE_PATH,
+                                                                    image_dict=train_val_image_dict,
+                                                                    allowed_people=set(self.val_people_names))
 
-            # ===== Step 3: Create Image Pairs =====
-            print("\nCreating pairs...")
+        # === Step 1: Load Test Dataset ===
+        test_image_dict, test_person_images = load_all_images(TEST_FILE_PATH, DATA_PATH_FOLDER)
+        self.test_person_images = test_person_images
+        self.test_image_dict = test_image_dict
 
-            # Create testing pairs from the dataset
-            self.test_pairs, self.test_pair_labels = (
-                create_pairs_for_set(pairs_file=dataset_file_path,
-                                     image_dict=temp_image_dict, allowed_people=set(self.test_person_images.keys())))
+        # ===== Step 3: Create Image Pairs for Test =====
+        print("\nCreating pairs...")
 
-        else:
-            raise ValueError(f"Invalid dataset file path: {dataset_file_path}")
+        # Create testing pairs from the dataset
+        self.test_pairs, self.test_pair_labels = (
+            create_pairs_for_set(pairs_file=TEST_FILE_PATH,
+                                 image_dict=test_image_dict, allowed_people=set(self.test_person_images.keys())))
 
     def create_siamese_network(self) -> SiameseNetwork:
 
@@ -1368,7 +1361,7 @@ class FaceRecognition:
         self.use_improved_arch = use_improved_arch
         self.experiment_name = exp_name
 
-        self.tensorboard_log_dir = os.path.join("tensorboard_logs", self.experiment_name)
+        self.tensorboard_log_dir = os.path.join(SAVED_LOGS_PATH, self.experiment_name)
         os.makedirs(self.tensorboard_log_dir, exist_ok=True)
         self.writer = SummaryWriter(log_dir=self.tensorboard_log_dir)
 
@@ -1493,7 +1486,7 @@ class FaceRecognition:
         self.model.load_state_dict(torch.load(model_path, map_location=device))
         self.model.eval()  # Set to evaluation mode
 
-        # Set default batch size for evaluation
+        # Set the default batch size for evaluation
         self.batch_size = 32
 
         print(f"✅ Loaded model from {model_path}")
@@ -1559,216 +1552,112 @@ class FaceRecognition:
         self.writer.add_figure('TestResults/roc_curve', fig, 0)
         plt.close(fig)
 
-    def generate_test_report(self, test_results: Dict[str, float]) -> None:
-        """Generate a comprehensive test report."""
-
-        # Create a detailed test report
-        test_report = f"""
-        COMPREHENSIVE TEST EVALUATION REPORT
-        ====================================
-
-        Model Architecture: Siamese Neural Network (Base + Enhanced Augmentation)
-        Test Dataset: LFW-a Test Set
-        Model File: best_model.pth
-
-        PERFORMANCE METRICS:
-        - Overall Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy'] * 100:.2f}%)
-        - True Positive Rate (TPR): {test_results['tpr']:.4f} ({test_results['tpr'] * 100:.2f}%)
-        - True Negative Rate (TNR): {test_results['tnr']:.4f} ({test_results['tnr'] * 100:.2f}%)
-        - F1 Score: {test_results['f1_score']:.4f}
-        - Area Under Curve (AUC): {test_results['auc']:.4f}
-        - Average Precision: {test_results['average_precision']:.4f}
-
-        INTERPRETATION:
-        - Same Person Detection: {test_results['tpr'] * 100:.1f}% of actual same-person pairs correctly identified
-        - Different Person Detection: {test_results['tnr'] * 100:.1f}% of different-person pairs correctly identified
-        - Model Confidence: AUC of {test_results['auc']:.3f} indicates {'good' if test_results['auc'] > 0.8 else 'moderate' if test_results['auc'] > 0.7 else 'limited'} discrimination ability
-
-        VALIDATION vs TEST COMPARISON:
-        - Expected Validation Accuracy: ~80.7% (from enhanced augmentation training)
-        - Actual Test Accuracy: {test_results['accuracy'] * 100:.2f}%
-        - Performance Drop: {80.7 - test_results['accuracy'] * 100:.1f}%
-
-        METHODOLOGY:
-        - Zero data leakage: Test individuals never seen during training/validation
-        - Standard evaluation protocol: Balanced pair evaluation
-        - Consistent preprocessing: Same pipeline as training data
-        - Model: Pre-trained weights loaded from best_model.pth
-
-        FINAL ASSESSMENT:
-        {'EXCELLENT GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 3 else 'GOOD GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 7 else 'MODERATE GENERALIZATION' if abs(80.7 - test_results['accuracy'] * 100) < 12 else 'POOR GENERALIZATION'}
+    def save_dataset_to_cache(self, cache_file: str) -> None:
         """
-
-        # Log to TensorBoard
-        self.writer.add_text('TestResults/comprehensive_report', test_report, 0)
-
-        # Save to file
-        os.makedirs('test_results', exist_ok=True)
-        with open('test_results/final_test_evaluation_report.txt', 'w') as f:
-            f.write(test_report)
-
-        print("📋 Test report saved to: test_results/final_test_evaluation_report.txt")
-
-    def save_preprocessed_data(self, data_cache_dir: str = "data_cache") -> None:
-        """
-        Save preprocessed training data to local files for faster loading.
+        Save preprocessed dataset to a local file.
 
         Args:
-            data_cache_dir: Directory to save cached data
+            cache_file: Filename to save cached data
         """
-        os.makedirs(data_cache_dir, exist_ok=True)
+        print("💾 Saving dataset data to cache...")
 
-        print("💾 Saving preprocessed data...")
-
-        # Save training data
-        train_data = {
+        cache_data = {
+            # Training data
             'train_pairs': self.train_pairs,
             'train_pair_labels': self.train_pair_labels,
-            'train_people_names': self.train_people_names
-        }
+            'train_people_names': self.train_people_names,
 
-        # Save validation data
-        val_data = {
+            # Validation data
             'val_pairs': self.val_pairs,
             'val_pair_labels': self.val_pair_labels,
-            'val_people_names': self.val_people_names
-        }
+            'val_people_names': self.val_people_names,
 
-        # Save metadata
-        metadata = {
+            'test_pairs': self.test_pairs,
+            'test_pair_labels': self.test_pair_labels,
+            'test_people_names': self.test_person_images,
+
+            # Metadata
             'train_val_person_images': self.train_val_person_images,
             'train_val_image_dict': self.train_val_image_dict,
             'train_val_distribution': self.train_val_distribution,
             'stats': self.stats,
-            'input_shape': self.input_shape,
-            'validation_split': VALIDATION_SPLIT
-        }
 
-        # Save files
-        with open(os.path.join(data_cache_dir, 'train_data.pkl'), 'wb') as f:
-            pickle.dump(train_data, f)
-
-        with open(os.path.join(data_cache_dir, 'val_data.pkl'), 'wb') as f:
-            pickle.dump(val_data, f)
-
-        with open(os.path.join(data_cache_dir, 'metadata.pkl'), 'wb') as f:
-            pickle.dump(metadata, f)
-
-        # Save data info for verification
-        data_info = {
-            'creation_time': datetime.now().isoformat(),
-            'train_pairs_count': len(self.train_pairs),
-            'val_pairs_count': len(self.val_pairs),
-            'unique_people': len(self.train_val_person_images),
+            # Configuration info
             'input_shape': self.input_shape,
             'validation_split': VALIDATION_SPLIT,
-            'data_hash': self._calculate_data_hash()
+            'created_time': datetime.now().isoformat(),
+            'train_count': len(self.train_pairs),
+            'val_count': len(self.val_pairs),
+            'train_val_people_count': len(self.train_val_person_images),
+            'test_count': len(self.test_pairs),
         }
 
-        with open(os.path.join(data_cache_dir, 'data_info.json'), 'w') as f:
-            json.dump(data_info, f, indent=2)
+        with open(cache_file, 'wb') as f:
+            pickle.dump(cache_data, f)
 
-        print(f"✅ Preprocessed data saved to: {data_cache_dir}")
+        file_size = os.path.getsize(cache_file) / (1024 * 1024)  # MB
+        print(f"✅ Dataset cached: {cache_file} ({file_size:.1f} MB)")
         print(f"   - Training pairs: {len(self.train_pairs):,}")
         print(f"   - Validation pairs: {len(self.val_pairs):,}")
-        print(f"   - Unique people: {len(self.train_val_person_images):,}")
+        print(f"   - train_val unique people: {len(self.train_val_person_images):,}")
+        print(f"   - Testing pairs: {len(self.train_pairs):,}")
+        print(f"   - test unique images: {len(self.test_person_images):,}")
 
-    def load_preprocessed_data(self, data_cache_dir: str = "data_cache") -> bool:
+    def load_dataset_from_cache(self, cache_file: str) -> bool:
         """
-        Load preprocessed training data from local files.
+        Load preprocessed dataset from a local file.
 
         Args:
-            data_cache_dir: Directory containing cached data
+            cache_file: Filename of cached data
 
         Returns:
-            bool: True if data loaded successfully, False otherwise
+            bool: True if loaded successfully, False otherwise
         """
-        if not os.path.exists(data_cache_dir):
+        if not os.path.exists(cache_file):
             return False
 
-        required_files = [
-            'train_data.pkl',
-            'val_data.pkl',
-            'metadata.pkl',
-            'data_info.json'
-        ]
-
-        # Check if all required files exist
-        for file_name in required_files:
-            if not os.path.exists(os.path.join(data_cache_dir, file_name)):
-                print(f"⚠️ Missing cached file: {file_name}")
-                return False
-
         try:
-            print("📂 Loading preprocessed data from cache...")
+            print(f"📂 Loading dataset from cache: {cache_file}")
 
-            # Load data info for verification
-            with open(os.path.join(data_cache_dir, 'data_info.json'), 'r') as f:
-                data_info = json.load(f)
+            with open(cache_file, 'rb') as f:
+                cache_data = pickle.load(f)
 
-            # Verify data compatibility
-            if (data_info['input_shape'] != list(self.input_shape) or
-                    data_info['validation_split'] != VALIDATION_SPLIT):
-                print("⚠️ Cached data incompatible with current settings")
+            # Verify compatibility
+            if (cache_data['input_shape'] != self.input_shape or
+                    cache_data['validation_split'] != VALIDATION_SPLIT):
+                print("⚠️  Cache incompatible with current settings")
                 return False
 
-            # Load training data
-            with open(os.path.join(data_cache_dir, 'train_data.pkl'), 'rb') as f:
-                train_data = pickle.load(f)
+            # Load all data
+            self.train_pairs = cache_data['train_pairs']
+            self.train_pair_labels = cache_data['train_pair_labels']
+            self.train_people_names = cache_data['train_people_names']
 
-            self.train_pairs = train_data['train_pairs']
-            self.train_pair_labels = train_data['train_pair_labels']
-            self.train_people_names = train_data['train_people_names']
+            self.val_pairs = cache_data['val_pairs']
+            self.val_pair_labels = cache_data['val_pair_labels']
+            self.val_people_names = cache_data['val_people_names']
 
-            # Load validation data
-            with open(os.path.join(data_cache_dir, 'val_data.pkl'), 'rb') as f:
-                val_data = pickle.load(f)
+            self.train_val_person_images = cache_data['train_val_person_images']
+            self.train_val_image_dict = cache_data['train_val_image_dict']
+            self.train_val_distribution = cache_data['train_val_distribution']
 
-            self.val_pairs = val_data['val_pairs']
-            self.val_pair_labels = val_data['val_pair_labels']
-            self.val_people_names = val_data['val_people_names']
+            self.test_pairs = cache_data['test_pairs']
+            self.test_pair_labels = cache_data['test_pair_labels']
+            self.test_person_images = cache_data['test_people_images']
+            self.test_image_dict = cache_data['test_image_dict']
 
-            # Load metadata
-            with open(os.path.join(data_cache_dir, 'metadata.pkl'), 'rb') as f:
-                metadata = pickle.load(f)
+            self.stats = cache_data['stats']
 
-            self.train_val_person_images = metadata['train_val_person_images']
-            self.train_val_image_dict = metadata['train_val_image_dict']
-            self.train_val_distribution = metadata['train_val_distribution']
-            self.stats = metadata['stats']
-
-            print(f"✅ Preprocessed data loaded successfully!")
-            print(f"   - Training pairs: {len(self.train_pairs):,}")
-            print(f"   - Validation pairs: {len(self.val_pairs):,}")
-            print(f"   - Unique people: {len(self.train_val_person_images):,}")
-            print(f"   - Cached on: {data_info['creation_time']}")
+            print(f"✅ Training data loaded from cache!")
+            print(f"   - Created: {cache_data['created_time']}")
+            print(f"   - Training pairs: {cache_data['train_count']:,}")
+            print(f"   - Validation pairs: {cache_data['val_count']:,}")
+            print(f"   - train_val unique people: {len(self.train_val_person_images):,}")
+            print(f"   - Testing pairs: {len(self.train_pairs):,}")
+            print(f"   - test unique images: {len(self.test_person_images):,}")
 
             return True
 
         except Exception as e:
-            print(f"❌ Failed to load cached data: {e}")
+            print(f"❌ Failed to load cache: {e}")
             return False
-
-    def _calculate_data_hash(self) -> str:
-        """Calculate hash of current data configuration for verification."""
-        config_str = f"{TRAIN_FILE_PATH}_{VALIDATION_SPLIT}_{self.input_shape}"
-        return hashlib.md5(config_str.encode()).hexdigest()
-
-    def clear_data_cache(self, data_cache_dir: str = "data_cache") -> None:
-        """Clear cached data files."""
-        if os.path.exists(data_cache_dir):
-            import shutil
-            shutil.rmtree(data_cache_dir)
-            print(f"🗑️ Cleared data cache: {data_cache_dir}")
-        else:
-            print("ℹ️ No data cache to clear")
-
-    def get_cache_info(self, data_cache_dir: str = "data_cache") -> dict:
-        """Get information about cached data."""
-        info_file = os.path.join(data_cache_dir, 'data_info.json')
-
-        if os.path.exists(info_file):
-            with open(info_file, 'r') as f:
-                return json.load(f)
-        else:
-            return {}

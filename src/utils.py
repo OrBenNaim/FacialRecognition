@@ -1,9 +1,11 @@
 import os
+import pickle
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 from src.constants import (
-    SAVE_IMG_DIR_PATH,
+    SAVED_IMG_DIR_PATH,
     HORIZONTAL_FLIP_THRESHOLD,
     BRIGHTNESS_ADJUST_THRESHOLD,
     GAUSSIAN_NOISE_THRESHOLD,
@@ -12,11 +14,10 @@ from src.constants import (
     NOISE_MEAN,
     NOISE_STD,
     PIXEL_MIN_VALUE,
-    PIXEL_MAX_VALUE
+    PIXEL_MAX_VALUE, DATA_PATH_FOLDER, TRAIN_FILE_PATH, TEST_FILE_PATH
 )
 
-
-def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_PATH) -> None:
+def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVED_IMG_DIR_PATH) -> None:
     """
     Create and save distribution plots for the dataset.
 
@@ -69,7 +70,6 @@ def plot_distribution_charts(train_val_dist: dict, save_dir: str = SAVE_IMG_DIR_
 
     print(f"Distribution plots saved in: {os.path.abspath(save_dir)}")
 
-
 def move_data_to_appropriate_device(img1, img2, labels, device):
     """
     Moves input tensors to the specified device (CPU/GPU).
@@ -91,7 +91,6 @@ def move_data_to_appropriate_device(img1, img2, labels, device):
 
     img1, img2, labels = img1.to(device), img2.to(device), labels.to(device)
     return img1, img2, labels
-
 
 def apply_simple_augmentation(image_array):
     """
@@ -158,3 +157,130 @@ def run_multiple_experiments(model):
                                           use_improved_arch=use_improved_arch, exp_name=exp_name)
 
             print(f"\n✅ Completed {model.experiment_name}")
+
+def print_header():
+    """Print welcome header."""
+    print("🚀" + "=" * 70 + "🚀")
+    print("    SIAMESE NEURAL NETWORK - COMPLETE PIPELINE")
+    print("    One-Shot Facial Recognition Implementation")
+    print("🚀" + "=" * 70 + "🚀")
+
+def print_phase_separator(phase_name):
+    """Print phase separator."""
+    print("\n" + "🔄" * 20)
+    print(f"    {phase_name}")
+    print("🔄" * 20 + "\n")
+
+def verify_prerequisites():
+    """Verify all prerequisites before starting."""
+    print("🔍 Verifying prerequisites...")
+
+    required_files = [
+        DATA_PATH_FOLDER,
+        TRAIN_FILE_PATH,
+        TEST_FILE_PATH
+    ]
+
+    missing_files = []
+    for file_path in required_files:
+        if not os.path.exists(file_path):
+            missing_files.append(file_path)
+
+    if missing_files:
+        print("❌ Missing required files:")
+        for file_path in missing_files:
+            print(f"   - {file_path}")
+        return False
+
+    # Create the necessary directories
+    os.makedirs("tensorboard_logs", exist_ok=True)
+    os.makedirs("test_results", exist_ok=True)
+    os.makedirs("images", exist_ok=True)
+
+    print("✅ All prerequisites satisfied")
+    return True
+
+def clear_training_data_cache(cache_file: str) -> None:
+    """Clear training data cache."""
+    if os.path.exists(cache_file):
+        os.remove(cache_file)
+        print(f"🗑️  Cleared cache: {cache_file}")
+    else:
+        print("ℹ️  No cache to clear")
+
+def get_cache_info(cache_file: str) -> dict:
+    """Get cache information."""
+    if not os.path.exists(cache_file):
+        return {}
+
+    try:
+        with open(cache_file, 'rb') as f:
+            cache_data = pickle.load(f)
+
+        file_size = os.path.getsize(cache_file) / (1024 * 1024)  # MB
+
+        return {
+            'exists': True,
+            'created_time': cache_data.get('created_time', 'Unknown'),
+            'train_count': cache_data.get('train_count', 0),
+            'val_count': cache_data.get('val_count', 0),
+            'people_count': cache_data.get('people_count', 0),
+            'input_shape': cache_data.get('input_shape', 'Unknown'),
+            'validation_split': cache_data.get('validation_split', 'Unknown'),
+            'file_size_mb': f"{file_size:.1f}"
+        }
+
+    except:
+        return {'exists': False, 'error': 'Corrupted cache file'}
+
+def generate_final_summary(test_results, total_time):
+    """Generate final pipeline summary."""
+    print("\n" + "🏆" + "=" * 70 + "🏆")
+    print("    COMPLETE PIPELINE SUMMARY")
+    print("🏆" + "=" * 70 + "🏆")
+
+    print(f"\n⏱️  TIMING:")
+    print(f"   Total Pipeline Time: {total_time / 60:.2f} minutes")
+
+    if test_results:
+        print(f"\n📊 FINAL TEST RESULTS:")
+        print(f"   Test Accuracy:      {test_results['accuracy']:.4f} ({test_results['accuracy'] * 100:.2f}%)")
+        print(f"   True Positive Rate: {test_results['tpr']:.4f} ({test_results['tpr'] * 100:.2f}%)")
+        print(f"   True Negative Rate: {test_results['tnr']:.4f} ({test_results['tnr'] * 100:.2f}%)")
+        print(f"   F1 Score:          {test_results['f1_score']:.4f}")
+        print(f"   AUC Score:         {test_results['auc']:.4f}")
+
+        # Performance assessment
+        validation_expected = 0.807  # Your enhanced augmentation result
+        performance_drop = validation_expected - test_results['accuracy']
+
+        print(f"\n📈 GENERALIZATION ANALYSIS:")
+        print(f"   Expected Validation: {validation_expected:.4f}")
+        print(f"   Actual Test:        {test_results['accuracy']:.4f}")
+        print(f"   Performance Drop:   {performance_drop:.4f} ({performance_drop * 100:.2f}%)")
+
+        if performance_drop < 0.03:
+            assessment = "EXCELLENT ✨"
+        elif performance_drop < 0.07:
+            assessment = "GOOD ✅"
+        elif performance_drop < 0.12:
+            assessment = "MODERATE 📊"
+        else:
+            assessment = "NEEDS IMPROVEMENT ⚠️"
+
+        print(f"   Assessment:         {assessment}")
+
+    print(f"\n📁 OUTPUTS GENERATED:")
+    print(f"   Model File:         best_model.pth")
+    print(f"   TensorBoard Logs:   tensorboard_logs/")
+    print(f"   Test Report:        test_results/final_test_evaluation_report.txt")
+    print(f"   Dataset Analysis:   images/")
+
+    print(f"\n🎯 NEXT STEPS:")
+    print(f"   1. View training curves:    tensorboard --logdir=tensorboard_logs")
+    print(f"   2. Read detailed report:    test_results/final_test_evaluation_report.txt")
+    print(f"   3. Analyze misclassifications in TensorBoard")
+
+    print("\n" + "🎉" + "=" * 70 + "🎉")
+    print("    SIAMESE NETWORK PIPELINE COMPLETED SUCCESSFULLY!")
+    print("🎉" + "=" * 70 + "🎉")
